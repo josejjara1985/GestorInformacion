@@ -384,13 +384,6 @@ h1, h2, h3, .brand h1, .login-badge h1, .vista-titulo h2, .nav-item, .btn {
 .escudo-sm { width: 48px; height: 48px; font-size: 16px; margin: 0; flex-shrink: 0; }
 .user-box { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .user-name { font-weight: 600; }
-.user-cargo {
-  font-size: 11px;
-  color: #d6e4f5;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-}
-.user-cargo:empty { display: none; }
 .user-rol {
   background: var(--dorado);
   color: var(--azul-oscuro);
@@ -408,12 +401,6 @@ h1, h2, h3, .brand h1, .login-badge h1, .vista-titulo h2, .nav-item, .btn {
 }
 .btn-ghost:hover { background: rgba(255, 255, 255, 0.12); }
 .ayuda-campo { color: var(--texto-suave); font-size: 13px; margin-bottom: 12px; }
-.user-cargo-lista {
-  font-size: 12px;
-  color: var(--texto-suave);
-  font-weight: 600;
-  margin-top: 2px;
-}
 
 /* ============ CUERPO ============ */
 .app {
