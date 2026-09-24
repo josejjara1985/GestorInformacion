@@ -1,5 +1,0 @@
-[phases.setup]
-aptPkgs = ["python3", "make", "g++"]
-
-[start]
-cmd = "node server.js"
