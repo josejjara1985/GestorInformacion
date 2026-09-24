@@ -400,6 +400,8 @@ function entrarApp() {
   $('#vistaLogin').classList.add('hidden')
   $('#vistaApp').classList.remove('hidden')
   $('#usuarioNombre').textContent = state.usuario.nombre
+  const cargoEl = $('#usuarioCargo')
+  if (cargoEl) cargoEl.textContent = state.usuario.cargo || ''
   $('#usuarioRol').textContent = rolLabel(state.usuario.rol)
   ocultarRol()
   pintarIconos()
@@ -2148,8 +2150,12 @@ async function cargarUsuarios() {
   const data = await api('/api/usuarios')
   $('#tablaUsuarios').innerHTML = data.usuarios
     .map((u) => `<tr>
-        <td><strong>${esc(u.nombre_completo)}</strong></td>
+        <td>
+          <strong>${esc(u.nombre_completo)}</strong>
+          ${u.cargo ? `<div class="user-cargo-lista">${esc(u.cargo)}</div>` : ''}
+        </td>
         <td>${esc(u.username)}</td>
+        <td>${esc(u.cargo || '—')}</td>
         <td>${badgeRol(u.rol)}</td>
         <td>${u.activo ? '<span class="badge badge-activo">Activo</span>' : '<span class="badge badge-off">Inactivo</span>'}</td>
         <td>${esc(u.creado_en || '')}</td>
@@ -2179,6 +2185,7 @@ async function abrirModalUsuario(id) {
     if (u) {
       $('#uNombre').value = u.nombre_completo
       $('#uUsername').value = u.username
+      $('#uCargo').value = u.cargo || ''
       $('#uRol').value = u.rol
       $('#uActivo').value = String(u.activo)
     }
@@ -2189,7 +2196,12 @@ async function abrirModalUsuario(id) {
 async function guardarUsuario(e) {
   e.preventDefault()
   const id = $('#uId').value
-  const body = { nombre_completo: $('#uNombre').value, rol: $('#uRol').value, activo: $('#uActivo').value === '1' }
+  const body = {
+    nombre_completo: $('#uNombre').value,
+    cargo: $('#uCargo').value,
+    rol: $('#uRol').value,
+    activo: $('#uActivo').value === '1'
+  }
   try {
     if (id) {
       await api('/api/usuarios/' + id, { method: 'PUT', body: JSON.stringify(body) })
