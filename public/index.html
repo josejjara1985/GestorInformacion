@@ -90,6 +90,7 @@
           </button>
           <div class="user-datos">
             <span id="usuarioNombre" class="user-name"></span>
+            <span id="usuarioCargo" class="user-cargo"></span>
             <span id="usuarioRol" class="user-rol"></span>
           </div>
           <button id="btnPassword" class="btn btn-ghost btn-sm" type="button">Cambiar contraseña</button>
@@ -526,7 +527,7 @@
         <section id="vista-usuarios" class="vista hidden">
           <div class="vista-titulo">
             <h2>Gestión de Usuarios</h2>
-            <p>Administre las cuentas de los usuarios del sistema y sus roles.</p>
+            <p>Administre las cuentas, roles y cargos del despacho. El cargo se muestra debajo del nombre.</p>
           </div>
           <div class="panel">
             <div class="toolbar">
@@ -538,6 +539,7 @@
                   <tr>
                     <th>Nombre</th>
                     <th>Usuario</th>
+                    <th>Cargo</th>
                     <th>Rol</th>
                     <th>Estado</th>
                     <th>Creado</th>
@@ -1034,6 +1036,17 @@
             <option value="consulta">Consulta (solo ver y reportes)</option>
             <option value="usuario">Usuario (registrar y editar registros)</option>
             <option value="administrador">Administrador (todo el sistema)</option>
+          </select>
+        </div>
+        <div class="campo">
+          <label>Cargo</label>
+          <select id="uCargo" class="input select-input">
+            <option value="">Seleccione un cargo</option>
+            <option value="Juez Especializado">Juez Especializado</option>
+            <option value="Secretario">Secretario</option>
+            <option value="Oficial Mayor">Oficial Mayor</option>
+            <option value="Auxiliar Judicial II">Auxiliar Judicial II</option>
+            <option value="Citador Grado III">Citador Grado III</option>
           </select>
         </div>
         <div class="campo">

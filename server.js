@@ -85,7 +85,7 @@ app.use(auditoria.middlewareAuto())
 
 function usuarioSesion(req) {
   if (!req.session.userId) return null
-  return db.prepare('SELECT id, nombre_completo AS nombre, username, rol, activo FROM usuarios WHERE id = ?').get(req.session.userId)
+  return db.prepare('SELECT id, nombre_completo AS nombre, username, rol, cargo, activo FROM usuarios WHERE id = ?').get(req.session.userId)
 }
 
 function requireAuth(req, res, next) {
@@ -161,7 +161,7 @@ app.post('/api/login', (req, res) => {
       descripcion: `Inicio de sesión exitoso de "${u.username}".`
     })
     res.locals.auditado = true
-    res.json({ id: u.id, nombre: u.nombre_completo, username: u.username, rol: u.rol })
+    res.json({ id: u.id, nombre: u.nombre_completo, username: u.username, rol: u.rol, cargo: u.cargo || '' })
   })
 })
 
@@ -936,9 +936,24 @@ app.get('/api/alertas', requireAuth, (req, res) => {
   res.json({ hoy, eventos, vencidas, prescripciones })
 })
 
+const CARGOS_USUARIO = [
+  'Juez Especializado',
+  'Secretario',
+  'Oficial Mayor',
+  'Auxiliar Judicial II',
+  'Citador Grado III'
+]
+
+function normalizarCargo(valor) {
+  const v = String(valor == null ? '' : valor).trim()
+  if (!v) return ''
+  const hallado = CARGOS_USUARIO.find((c) => c.toLowerCase() === v.toLowerCase())
+  return hallado || v
+}
+
 app.get('/api/usuarios', requireAuth, requireRol('administrador'), (_req, res) => {
-  const usuarios = db.prepare('SELECT id, nombre_completo, username, rol, activo, creado_en FROM usuarios ORDER BY id').all()
-  res.json({ usuarios })
+  const usuarios = db.prepare('SELECT id, nombre_completo, username, rol, cargo, activo, creado_en FROM usuarios ORDER BY id').all()
+  res.json({ usuarios, cargos: CARGOS_USUARIO })
 })
 
 app.post('/api/usuarios', requireAuth, requireRol('administrador'), (req, res) => {
@@ -953,8 +968,8 @@ app.post('/api/usuarios', requireAuth, requireRol('administrador'), (req, res) =
   const hash = bcrypt.hashSync(String(b.password), 10)
   try {
     const info = db.prepare(
-      'INSERT INTO usuarios (nombre_completo, username, password_hash, rol, activo) VALUES (?, ?, ?, ?, ?)'
-    ).run(b.nombre_completo || b.username, String(b.username).trim(), hash, b.rol || 'consulta', b.activo === false ? 0 : 1)
+      'INSERT INTO usuarios (nombre_completo, username, password_hash, rol, cargo, activo) VALUES (?, ?, ?, ?, ?, ?)'
+    ).run(b.nombre_completo || b.username, String(b.username).trim(), hash, b.rol || 'consulta', normalizarCargo(b.cargo), b.activo === false ? 0 : 1)
     auditoria.registrar({
       req,
       accion: 'crear_usuario',
@@ -973,10 +988,11 @@ app.post('/api/usuarios', requireAuth, requireRol('administrador'), (req, res) =
 app.put('/api/usuarios/:id', requireAuth, requireRol('administrador'), (req, res) => {
   const b = req.body || {}
   const id = Number(req.params.id)
-  const antes = db.prepare('SELECT nombre_completo, rol, activo FROM usuarios WHERE id = ?').get(id)
-  db.prepare('UPDATE usuarios SET nombre_completo = COALESCE(?, nombre_completo), rol = COALESCE(?, rol), activo = COALESCE(?, activo) WHERE id = ?')
-    .run(b.nombre_completo || null, b.rol || null, b.activo === undefined ? null : (b.activo ? 1 : 0), id)
-  const despues = db.prepare('SELECT nombre_completo, rol, activo FROM usuarios WHERE id = ?').get(id)
+  const antes = db.prepare('SELECT nombre_completo, rol, cargo, activo FROM usuarios WHERE id = ?').get(id)
+  const cargoNuevo = Object.prototype.hasOwnProperty.call(b, 'cargo') ? normalizarCargo(b.cargo) : null
+  db.prepare('UPDATE usuarios SET nombre_completo = COALESCE(?, nombre_completo), rol = COALESCE(?, rol), cargo = COALESCE(?, cargo), activo = COALESCE(?, activo) WHERE id = ?')
+    .run(b.nombre_completo || null, b.rol || null, cargoNuevo, b.activo === undefined ? null : (b.activo ? 1 : 0), id)
+  const despues = db.prepare('SELECT nombre_completo, rol, cargo, activo FROM usuarios WHERE id = ?').get(id)
   const cambioPermisos = antes && despues && antes.rol !== despues.rol
   auditoria.registrar({
     req,
