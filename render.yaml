@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: GestorInformacion
+    runtime: node
+    plan: free
+    buildCommand: npm ci
+    startCommand: node server.js
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: TZ
+        value: America/Bogota
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: BACKUP_KEY
+        generateValue: true

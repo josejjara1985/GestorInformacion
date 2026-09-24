@@ -1,0 +1,1222 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Gestor de Información - Juzgado Primero Penal del Circuito Especializado de Tumaco</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&family=Work+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/style.css?v=68" />
+</head>
+<body>
+  <div id="vistaLogin" class="login-wrap hidden">
+    <div class="gov-bar gov-bar-login">
+      <span class="gov-bar-izq">
+        <svg class="gov-escudo" viewBox="0 0 24 28" aria-hidden="true" focusable="false">
+          <path fill="#fdd306" d="M12 1.2 22 5.2v8.2c0 6.2-4.4 10.6-10 13.2C6.4 24 2 19.6 2 13.4V5.2L12 1.2z"/>
+          <path fill="#043f75" d="M12 3.1 20.2 6.3v6.9c0 5-3.5 8.6-8.2 10.8C7.3 21.8 3.8 18.2 3.8 13.2V6.3L12 3.1z"/>
+          <path fill="#fdd306" d="M8.4 11.2h7.2v1.5H8.4zm2.1-3.4h3v8.4h-3z"/>
+        </svg>
+        <span class="gov-bar-marca">RAMA JUDICIAL</span>
+      </span>
+      <span class="gov-bar-pais">República de Colombia</span>
+    </div>
+    <div class="login-card">
+      <div class="login-badge">
+        <div class="escudo" aria-hidden="true">RJ</div>
+        <h1>Gestor de Información</h1>
+        <p class="juzgado-nombre">Juzgado Primero Penal del Circuito Especializado de Tumaco</p>
+      </div>
+      <form id="formLogin" method="post" action="/api/login" autocomplete="on" aria-label="Inicio de sesión">
+        <div class="campo">
+          <label for="loginUsername">Usuario</label>
+          <div class="campo-ico">
+            <span class="campo-ico-izq" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.2"/><path d="M5.2 20a6.8 6.8 0 0 1 13.6 0"/></svg>
+            </span>
+            <input type="text" id="loginUsername" name="username" autocomplete="username" required placeholder="Ingrese su usuario" aria-required="true" aria-describedby="loginAlerta" />
+          </div>
+        </div>
+        <div class="campo">
+          <label for="loginPassword">Contraseña</label>
+          <div class="campo-ico">
+            <span class="campo-ico-izq" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
+            </span>
+            <input type="password" id="loginPassword" class="login-clave" name="password" autocomplete="current-password" required placeholder="Ingrese su contraseña" aria-required="true" aria-describedby="loginAlerta" />
+            <button type="button" id="btnVerClave" class="campo-ico-der" aria-label="Mostrar contraseña" aria-pressed="false" aria-controls="loginPassword">
+              <svg class="ico-ojo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>
+              <svg class="ico-ojo-off hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3l18 18"/><path d="M10.6 10.6A3 3 0 0 0 12 15a3 3 0 0 0 2.4-1.2"/><path d="M6.7 6.8C4.2 8.4 2 12 2 12s3.6 7 10 7c2 0 3.7-.5 5.1-1.3"/><path d="M10.9 5.1A11 11 0 0 1 12 5c6.4 0 10 7 10 7a18 18 0 0 1-3.2 3.8"/></svg>
+            </button>
+          </div>
+        </div>
+        <div id="loginAlerta" class="login-alerta hidden" role="alert" aria-live="assertive">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 2.6 20h18.8z"/><path d="M12 9.5v4.2"/><circle cx="12" cy="17.2" r="0.9" fill="currentColor" stroke="none"/></svg>
+          <p id="loginError"></p>
+        </div>
+        <button type="submit" id="btnIngresar" class="btn btn-primary btn-block btn-ingresar">Ingresar</button>
+        <p id="loginHttps" class="login-https hidden">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
+          Conexión segura
+        </p>
+      </form>
+      <p class="login-creditos">Creado por: Ing. José Julián Jaramillo Muñoz y la Abogada Judith Jackeline Jaramillo Muñoz</p>
+      <p class="login-version">Versión 1.0 · 2026</p>
+    </div>
+  </div>
+
+  <div id="vistaApp" class="app hidden">
+    <div class="gov-bar">
+      <span class="gov-bar-marca">RAMA JUDICIAL</span>
+      <span class="gov-bar-pais">República de Colombia</span>
+    </div>
+    <header class="app-header">
+      <div class="app-header-inner">
+        <button id="btnMenuMovil" class="btn-menu-movil" type="button" aria-label="Abrir menú" aria-controls="sidebar" aria-expanded="false">
+          <span class="menu-lineas" aria-hidden="true"></span>
+        </button>
+        <div class="brand">
+          <div class="escudo escudo-sm" aria-hidden="true">RJ</div>
+          <div class="brand-texto">
+            <span class="brand-entidad">Rama Judicial &middot; República de Colombia</span>
+            <h1>Gestor de Información</h1>
+            <p>Juzgado Primero Penal del Circuito Especializado de Tumaco</p>
+          </div>
+        </div>
+        <div class="user-box">
+          <button id="btnCampana" class="btn-campana" title="Alertas">
+            &#9888; <span id="badgeAlertas" class="badge-alerta hidden">0</span>
+          </button>
+          <div class="user-datos">
+            <span id="usuarioNombre" class="user-name"></span>
+            <span id="usuarioRol" class="user-rol"></span>
+          </div>
+          <button id="btnPassword" class="btn btn-ghost btn-sm" type="button">Cambiar contraseña</button>
+          <button id="btnSalir" class="btn btn-outline btn-sm" type="button">Salir</button>
+        </div>
+      </div>
+    </header>
+
+    <div class="app-body">
+      <div id="navBackdrop" class="nav-backdrop hidden"></div>
+      <nav class="sidebar" id="sidebar" aria-label="Menú principal">
+        <div class="sidebar-cab">
+          <div class="sidebar-cab-brand">
+            <div class="escudo escudo-xs" aria-hidden="true">RJ</div>
+            <div class="sidebar-cab-texto">
+              <strong>Rama Judicial</strong>
+              <span>Gestor de Información</span>
+            </div>
+          </div>
+          <button id="btnColapsarNav" class="sidebar-colapsar" type="button" title="Contraer menú" aria-label="Contraer menú">&#171;</button>
+        </div>
+
+        <div class="sidebar-scroll">
+          <div class="sidebar-seccion" data-seccion="general">General</div>
+          <button class="nav-item" data-vista="inicio">
+            <span class="nav-ico" data-ico="inicio"></span><span class="nav-label">Inicio</span>
+          </button>
+          <div class="nav-grupo" id="navReportes">
+            <button class="nav-item nav-toggle" type="button" data-submenu="navReportesSub" aria-expanded="false">
+              <span class="nav-ico" data-ico="reportes"></span>
+              <span class="nav-toggle-label">Reportes</span>
+              <span class="nav-flecha" aria-hidden="true">&#9662;</span>
+            </button>
+            <div class="nav-submenu hidden" id="navReportesSub">
+              <button class="nav-subitem" data-vista="reportes">
+                <span class="nav-ico" data-ico="reportes"></span><span class="nav-label">Consultas y Reportes</span>
+              </button>
+              <button class="nav-subitem" data-vista="completo">
+                <span class="nav-ico" data-ico="completo"></span><span class="nav-label">Completo</span>
+              </button>
+              <button class="nav-subitem" data-vista="estadistica">
+                <span class="nav-ico" data-ico="estadistica"></span><span class="nav-label">Estadística</span>
+              </button>
+              <button class="nav-subitem" data-vista="fijar-fecha">
+                <span class="nav-ico" data-ico="fijar-fecha"></span><span class="nav-label">Reporte Fijar Fecha</span>
+              </button>
+            </div>
+          </div>
+          <button class="nav-item" data-vista="calendario">
+            <span class="nav-ico" data-ico="calendario"></span><span class="nav-label">Calendario</span>
+          </button>
+          <div class="nav-grupo" id="navOficios">
+            <button class="nav-item nav-toggle" type="button" data-submenu="navOficiosSub" aria-expanded="false">
+              <span class="nav-ico" data-ico="oficios"></span>
+              <span class="nav-toggle-label">Oficios</span>
+              <span class="nav-flecha" aria-hidden="true">&#9662;</span>
+            </button>
+            <div class="nav-submenu hidden" id="navOficiosSub">
+              <button class="nav-subitem" data-vista="orden-verbal" data-oficio="orden">
+                <span class="nav-ico" data-ico="oficio"></span><span class="nav-label">Orden Verbal</span>
+              </button>
+              <button class="nav-subitem" data-vista="orden-verbal" data-oficio="recordatorio">
+                <span class="nav-ico" data-ico="oficio"></span><span class="nav-label">Recordatorio de Audiencia</span>
+              </button>
+              <button class="nav-subitem" data-vista="orden-verbal" data-oficio="acta">
+                <span class="nav-ico" data-ico="oficio"></span><span class="nav-label">Reporte Audiencias</span>
+              </button>
+              <button class="nav-subitem" data-vista="orden-verbal" data-oficio="constancia">
+                <span class="nav-ico" data-ico="oficio"></span><span class="nav-label">Constancia Audiencia</span>
+              </button>
+              <button class="nav-subitem" data-vista="orden-verbal" data-oficio="solicitud-defensor">
+                <span class="nav-ico" data-ico="oficio"></span><span class="nav-label">Solicitud Defensor</span>
+              </button>
+            </div>
+          </div>
+          <div class="nav-grupo" id="navActas">
+            <button class="nav-item nav-toggle" type="button" data-submenu="navActasSub" aria-expanded="false">
+              <span class="nav-ico" data-ico="actas"></span>
+              <span class="nav-toggle-label">Actas</span>
+              <span class="nav-flecha" aria-hidden="true">&#9662;</span>
+            </button>
+            <div class="nav-submenu hidden" id="navActasSub">
+              <button class="nav-subitem" data-vista="orden-verbal" data-oficio="acusacion">
+                <span class="nav-ico" data-ico="acta"></span><span class="nav-label">Acusación</span>
+              </button>
+              <button class="nav-subitem" data-vista="orden-verbal" data-oficio="preparatoria">
+                <span class="nav-ico" data-ico="acta"></span><span class="nav-label">Preparatoria</span>
+              </button>
+              <button class="nav-subitem" data-vista="orden-verbal" data-oficio="auto-pruebas">
+                <span class="nav-ico" data-ico="acta"></span><span class="nav-label">Auto pruebas</span>
+              </button>
+              <button class="nav-subitem" data-vista="orden-verbal" data-oficio="juicio-oral">
+                <span class="nav-ico" data-ico="acta"></span><span class="nav-label">Juicio</span>
+              </button>
+              <button class="nav-subitem" data-vista="orden-verbal" data-oficio="sentido-fallo">
+                <span class="nav-ico" data-ico="acta"></span><span class="nav-label">Sentido Fallo Individualización Pena 447</span>
+              </button>
+              <button class="nav-subitem" data-vista="orden-verbal" data-oficio="individualizacion-pena">
+                <span class="nav-ico" data-ico="acta"></span><span class="nav-label">Individualización Pena 447</span>
+              </button>
+              <button class="nav-subitem" data-vista="orden-verbal" data-oficio="lectura-sentencia">
+                <span class="nav-ico" data-ico="acta"></span><span class="nav-label">Lectura Sentencia</span>
+              </button>
+              <button class="nav-subitem" data-vista="orden-verbal" data-oficio="preacuerdo">
+                <span class="nav-ico" data-ico="acta"></span><span class="nav-label">Preacuerdo</span>
+              </button>
+              <button class="nav-subitem" data-vista="orden-verbal" data-oficio="solicitud-preclusion">
+                <span class="nav-ico" data-ico="acta"></span><span class="nav-label">Solicitud Preclusión</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="sidebar-seccion" data-seccion="procesos">Procesos</div>
+          <div id="navModulos"></div>
+          <div class="nav-grupo" id="navDirectorios">
+            <button class="nav-item nav-toggle" type="button" data-submenu="navDirectoriosSub" aria-expanded="false">
+              <span class="nav-ico" data-ico="directorio"></span>
+              <span class="nav-toggle-label">Directorio</span>
+              <span class="nav-flecha" aria-hidden="true">&#9662;</span>
+            </button>
+            <div class="nav-submenu hidden" id="navDirectoriosSub"></div>
+          </div>
+
+          <div class="sidebar-seccion" data-seccion="administracion" id="seccionAdmin" data-rol="administrador">Administración</div>
+          <button class="nav-item" data-vista="usuarios" data-rol="administrador">
+            <span class="nav-ico" data-ico="usuarios"></span><span class="nav-label">Usuarios</span>
+          </button>
+          <button class="nav-item" data-vista="bd" data-rol="administrador">
+            <span class="nav-ico" data-ico="bd"></span><span class="nav-label">Base de Datos</span>
+          </button>
+          <button class="nav-item" data-vista="auditoria" data-rol="administrador">
+            <span class="nav-ico" data-ico="auditoria"></span><span class="nav-label">Auditoría</span>
+          </button>
+          <button class="nav-item" data-vista="estructura" data-rol="administrador">
+            <span class="nav-ico" data-ico="estructura"></span><span class="nav-label">Estructura</span>
+          </button>
+        </div>
+
+      </nav>
+
+      <main class="content">
+        <nav id="breadcrumb" class="breadcrumb" aria-label="Ubicación"></nav>
+        <section id="vista-inicio" class="vista">
+          <div class="vista-titulo">
+            <h2>Resumen General</h2>
+            <p>Inventario definitivo del Juzgado Primero Penal del Circuito Especializado de Tumaco.</p>
+          </div>
+          <div id="panelAlertasInicio"></div>
+          <div id="resumenTarjetas" class="cards-grid"></div>
+          <div id="resumenDetalle" class="cards-grid cards-dos"></div>
+        </section>
+
+        <section id="vista-modulo" class="vista hidden">
+          <div class="vista-titulo">
+            <h2 id="moduloTitulo"></h2>
+            <p id="moduloDescripcion"></p>
+          </div>
+          <div class="panel">
+            <div class="toolbar toolbar-busqueda">
+              <input type="text" id="moduloQ" class="input" placeholder="Palabras clave (todas deben coincidir)" />
+              <select id="moduloFechaCampo" class="input select-input" title="Campo de fecha a filtrar"></select>
+              <input type="date" id="moduloDesde" class="input" title="Fecha inicial" />
+              <input type="date" id="moduloHasta" class="input" title="Fecha final" />
+              <select id="moduloFiltroCampo" class="input select-input"></select>
+              <input type="text" id="moduloFiltroValor" class="input" placeholder="Valor exacto del filtro" />
+              <button id="btnBuscarModulo" class="btn btn-primary">Buscar</button>
+              <button id="btnLimpiarBusqueda" class="btn btn-outline">Limpiar</button>
+              <button id="btnNuevoRegistro" class="btn btn-success" data-rol="administrador,usuario">+ Nuevo registro</button>
+              <button id="btnReporteModulo" class="btn btn-outline">Ver reporte</button>
+              <div class="dropdown" id="moduloDropdown" data-rol="administrador" style="position:relative">
+                <button id="btnModuloMenu" class="btn btn-outline">Opciones &#9662;</button>
+                <div id="moduloMenu" class="dropdown-menu hidden">
+                  <button type="button" class="dropdown-item" onclick="abrirRenombrarTitulos()">Renombrar títulos de columnas</button>
+                  <button type="button" class="dropdown-item" onclick="abrirModalTabla()">Configuración del módulo</button>
+                  <button type="button" class="dropdown-item" onclick="exportarModuloCompleto()">Exportar módulo completo (CSV)</button>
+                </div>
+              </div>
+            </div>
+            <div class="tabla-scroll">
+              <table class="tabla">
+                <thead id="moduloThead"></thead>
+                <tbody id="moduloTbody"></tbody>
+              </table>
+            </div>
+            <p id="moduloCriterios" class="ayuda-ia hidden"></p>
+            <div class="paginacion">
+              <button id="btnModuloAnterior" class="btn btn-outline btn-sm">Anterior</button>
+              <span id="infoModuloPagina"></span>
+              <button id="btnModuloSiguiente" class="btn btn-outline btn-sm">Siguiente</button>
+            </div>
+          </div>
+        </section>
+
+        <section id="vista-reportes" class="vista hidden">
+          <div class="vista-titulo">
+            <h2>Consultas y Reportes</h2>
+            <p>Consulta sobre el inventario definitivo. El rango se aplica solo al campo de fecha seleccionado.</p>
+          </div>
+          <div class="panel">
+            <div class="reporte-filtros">
+              <div class="campo">
+                <label for="repModulo">Módulo</label>
+                <select id="repModulo" class="input select-input"></select>
+              </div>
+              <div class="campo">
+                <label for="repFechaCampo">Campo de fecha</label>
+                <select id="repFechaCampo" class="input select-input"></select>
+              </div>
+              <div class="campo">
+                <label for="repDesde">Desde</label>
+                <input type="date" id="repDesde" class="input" />
+              </div>
+              <div class="campo">
+                <label for="repHasta">Hasta</label>
+                <input type="date" id="repHasta" class="input" />
+              </div>
+              <div class="reporte-acciones">
+                <button id="btnGenerarReporte" class="btn btn-primary">Generar reporte</button>
+                <button id="btnExportarReporte" class="btn btn-outline">Exportar CSV</button>
+                <button id="btnExportarModulo" class="btn btn-outline">Exportar módulo completo</button>
+              </div>
+            </div>
+          </div>
+          <div id="reporteResultado" class="hidden"></div>
+        </section>
+
+        <section id="vista-completo" class="vista hidden">
+          <div class="vista-titulo">
+            <h2>Reporte Completo</h2>
+            <p>Fuente: inventario definitivo. Filtra únicamente por el campo de fecha seleccionado, con rango inclusivo.</p>
+          </div>
+          <div class="panel ia-panel">
+            <div class="ia-badge">IA identifica los datos a reportar</div>
+            <div class="reporte-filtros">
+              <div class="campo">
+                <label for="compModulo">Módulo</label>
+                <select id="compModulo" class="input select-input"></select>
+              </div>
+              <div class="campo">
+                <label for="compFechaCampo">Campo de fecha</label>
+                <select id="compFechaCampo" class="input select-input"></select>
+              </div>
+              <div class="campo">
+                <label for="compDesde">Desde</label>
+                <input type="date" id="compDesde" class="input" />
+              </div>
+              <div class="campo">
+                <label for="compHasta">Hasta</label>
+                <input type="date" id="compHasta" class="input" />
+              </div>
+              <div class="reporte-acciones">
+                <button id="btnGenerarCompleto" class="btn btn-primary">Generar Completo</button>
+                <button id="btnExportarCompleto" class="btn btn-outline">Exportar CSV</button>
+              </div>
+            </div>
+            <p class="ayuda-ia">Cada registro proviene del inventario definitivo. Si elige FECHA INGRESO, no se mezcla con fechas de salida u otras actuaciones.</p>
+          </div>
+          <div id="completoResultado"></div>
+        </section>
+
+        <section id="vista-estadistica" class="vista hidden">
+          <div class="vista-titulo">
+            <h2>Reporte Estadística</h2>
+            <p>Ley 906 cuenta solo procesos con FECHA INGRESO en el rango. Categorías = DELITO ESTADISTICA reales. El total debe coincidir con esos registros.</p>
+          </div>
+          <div class="panel ia-panel">
+            <div class="ia-badge">IA clasifica delitos, entradas, salidas y audiencias</div>
+            <div class="reporte-filtros">
+              <div class="campo">
+                <label for="estDesde">Desde</label>
+                <input type="date" id="estDesde" class="input" />
+              </div>
+              <div class="campo">
+                <label for="estHasta">Hasta</label>
+                <input type="date" id="estHasta" class="input" />
+              </div>
+              <div class="reporte-acciones">
+                <button id="btnGenerarEstadistica" class="btn btn-primary">Generar Estadística</button>
+                <button id="btnExportarEstadistica" class="btn btn-outline">Exportar CSV</button>
+              </div>
+            </div>
+          </div>
+          <div id="estadisticaResultado"></div>
+        </section>
+
+        <section id="vista-fijar-fecha" class="vista hidden">
+          <div class="vista-titulo">
+            <h2>Reporte Fijar Fecha</h2>
+            <p>Fuente: inventario definitivo · Ley 906. Juzgado PRIMERO. Filtra fecha de audiencia (AJ) pendiente de fijar o anterior a hoy.</p>
+          </div>
+          <div class="panel ia-panel">
+            <div class="ia-badge">Consulta sobre Ley 906 · Juzgado PRIMERO</div>
+            <div class="reporte-filtros">
+              <div class="campo">
+                <label for="ffFiltro">Estado de la fecha de audiencia</label>
+                <select id="ffFiltro" class="input select-input">
+                  <option value="todos">Todos (pendientes y fecha anterior)</option>
+                  <option value="pendientes">Solo pendientes de fijar</option>
+                  <option value="anteriores">Solo fecha anterior a hoy</option>
+                </select>
+              </div>
+              <div class="campo">
+                <label for="ffQ">Palabras clave</label>
+                <input type="text" id="ffQ" class="input" placeholder="Radicado, procesado, audiencia..." />
+              </div>
+              <div class="reporte-acciones">
+                <button id="btnGenerarFf" class="btn btn-primary">Generar reporte</button>
+                <button id="btnLimpiarFf" class="btn btn-outline">Limpiar</button>
+                <button id="btnExportarFf" class="btn btn-outline">Exportar Excel</button>
+              </div>
+            </div>
+            <p class="ayuda-ia">Pendiente de fijar = celda AJ vacía, “Pendiente” o sin fecha válida. Fecha anterior = AJ con fecha menor a hoy. AQ debe ser PRIMERO.</p>
+          </div>
+          <div id="ffResultado" class="hidden">
+            <div id="ffResumenCards" class="reporte-resumen"></div>
+            <p id="ffResumen" class="ayuda-ia"></p>
+            <div class="panel">
+              <div class="tabla-scroll">
+                <table class="tabla">
+                  <thead id="ffThead"></thead>
+                  <tbody id="ffTbody"></tbody>
+                </table>
+              </div>
+              <div class="paginacion">
+                <button id="btnFfAnterior" class="btn btn-outline btn-sm">Anterior</button>
+                <span id="infoFfPagina"></span>
+                <button id="btnFfSiguiente" class="btn btn-outline btn-sm">Siguiente</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="vista-calendario" class="vista hidden">
+          <div class="vista-titulo">
+            <h2>Calendario de audiencias</h2>
+            <p>Agenda tomada de la hoja CALENDARIO del Excel Completo. Las alertas avisan audiencias próximas, vencidas y prescripciones.</p>
+          </div>
+          <div id="alertasCalendario"></div>
+          <div class="panel">
+            <div class="toolbar cal-toolbar">
+              <button id="btnCalPrev" class="btn btn-outline btn-sm">Mes anterior</button>
+              <h3 id="calTitulo" class="cal-titulo"></h3>
+              <button id="btnCalNext" class="btn btn-outline btn-sm">Mes siguiente</button>
+              <button id="btnCalHoy" class="btn btn-outline btn-sm">Hoy</button>
+              <button id="btnNuevaAgenda" class="btn btn-success" data-rol="administrador,usuario">+ Agendar</button>
+            </div>
+            <div class="cal-wrap">
+              <div id="calendarioGrid" class="cal-grid"></div>
+            </div>
+          </div>
+          <div class="panel">
+            <h3>Agenda del día <span id="calDiaSel"></span></h3>
+            <div id="calListaDia"></div>
+          </div>
+        </section>
+
+        <section id="vista-orden-verbal" class="vista hidden">
+          <div class="vista-titulo">
+            <h2 id="ovVistaTitulo">Oficios</h2>
+            <p id="ovVistaDesc">Busque un registro del inventario, elija el tipo de oficio, verifique la vista previa y genérelo con los datos actuales del proceso.</p>
+          </div>
+          <div class="panel">
+            <div class="toolbar toolbar-busqueda">
+              <input type="text" id="ovQ" class="input" placeholder="Radicado, procesado, orden verbal, audiencia..." />
+              <button id="btnBuscarOv" class="btn btn-primary">Buscar</button>
+              <button id="btnLimpiarOv" class="btn btn-outline">Limpiar</button>
+            </div>
+            <div class="tabla-scroll">
+              <table class="tabla">
+                <thead>
+                  <tr>
+                    <th>No. Orden</th>
+                    <th>Radicado</th>
+                    <th>No.</th>
+                    <th>Procesado(s)</th>
+                    <th>Audiencia</th>
+                    <th>Fecha</th>
+                    <th>Hora</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody id="ovTbody"></tbody>
+              </table>
+            </div>
+            <div class="paginacion">
+              <button id="btnOvAnterior" class="btn btn-outline btn-sm">Anterior</button>
+              <span id="infoOvPagina"></span>
+              <button id="btnOvSiguiente" class="btn btn-outline btn-sm">Siguiente</button>
+            </div>
+          </div>
+          <div id="ovPreviewWrap" class="hidden">
+            <div class="panel ov-acciones">
+              <h3 id="ovPreviewTitulo">Vista previa</h3>
+              <p class="ayuda-ia">Los campos se toman del registro seleccionado. Si actualiza el inventario, vuelva a generar para obtener los datos vigentes.</p>
+              <div class="campo" style="max-width:340px">
+                <label>Tipo de documento</label>
+                <select id="ovTipoDoc" class="input select-input">
+                  <option value="orden">Orden verbal</option>
+                  <option value="recordatorio">Recordatorio de audiencia</option>
+                  <option value="acta">Reporte Audiencias</option>
+                  <option value="constancia">Constancia Audiencia</option>
+                  <option value="solicitud-defensor">Solicitud Defensor</option>
+                  <option value="acusacion">Acusación</option>
+                  <option value="preparatoria">Preparatoria</option>
+                  <option value="auto-pruebas">Auto pruebas</option>
+                  <option value="juicio-oral">Juicio</option>
+                  <option value="sentido-fallo">Sentido Fallo Individualización Pena 447</option>
+                  <option value="individualizacion-pena">Individualización Pena 447</option>
+                  <option value="lectura-sentencia">Lectura Sentencia</option>
+                  <option value="preacuerdo">Preacuerdo</option>
+                  <option value="solicitud-preclusion">Solicitud Preclusión</option>
+                </select>
+              </div>
+              <div class="campo hidden" style="max-width:340px" id="ovActaCampos">
+                <label>Resultado de la audiencia</label>
+                <select id="ovActaResultado" class="input select-input">
+                  <option value="REALIZO">REALIZO</option>
+                  <option value="APLAZO">APLAZO</option>
+                  <option value="FRACASO">FRACASO</option>
+                </select>
+              </div>
+              <div class="reporte-acciones">
+                <button id="btnGenerarOv" class="btn btn-primary">GENERAR DOCUMENTO</button>
+                <button id="btnImprimirOv" class="btn btn-outline">Imprimir</button>
+                <button id="btnWordOv" class="btn btn-primary hidden">DESCARGAR WORD</button>
+              </div>
+            </div>
+            <div class="panel ov-preview-panel">
+              <div id="ovPreview" class="ov-preview"></div>
+            </div>
+          </div>
+        </section>
+
+        <section id="vista-usuarios" class="vista hidden">
+          <div class="vista-titulo">
+            <h2>Gestión de Usuarios</h2>
+            <p>Administre las cuentas de los usuarios del sistema y sus roles.</p>
+          </div>
+          <div class="panel">
+            <div class="toolbar">
+              <button id="btnNuevoUsuario" class="btn btn-success">+ Nuevo usuario</button>
+            </div>
+            <div class="tabla-scroll">
+              <table class="tabla">
+                <thead>
+                  <tr>
+                    <th>Nombre</th>
+                    <th>Usuario</th>
+                    <th>Rol</th>
+                    <th>Estado</th>
+                    <th>Creado</th>
+                    <th>Acciones</th>
+                  </tr>
+                </thead>
+                <tbody id="tablaUsuarios"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <section id="vista-bd" class="vista hidden">
+          <div class="vista-titulo">
+            <h2>Base de Datos</h2>
+            <p>Copias de seguridad fidedignas e íntegras, programación automática y envío por correo.</p>
+          </div>
+
+          <div class="tabs-bd">
+            <button type="button" class="tab-bd active" data-tab="copias">Copias de seguridad</button>
+            <button type="button" class="tab-bd" data-tab="programacion">Programación</button>
+            <button type="button" class="tab-bd" data-tab="correo">Correo</button>
+            <button type="button" class="tab-bd" data-tab="boveda">Bóveda e inmutabilidad</button>
+          </div>
+
+          <div class="tab-panel" data-panel="copias">
+            <div class="panel">
+              <div class="toolbar">
+                <button id="btnGenerarCopia" class="btn btn-success">Generar copia de seguridad</button>
+                <label class="switch-inline"><input type="checkbox" id="copiaCifrar" checked /> Cifrar (AES-256)</label>
+                <label class="switch-inline"><input type="checkbox" id="copiaRedundante" checked /> Copia redundante</label>
+                <label class="switch-inline"><input type="checkbox" id="copiaEnviarCorreo" /> Enviar por correo</label>
+                <button id="btnDescargarRespaldo" class="btn btn-outline">Descarga rápida (.db)</button>
+                <button id="btnExportarBdExcel" class="btn btn-outline">Exportar a Excel</button>
+                <button id="btnExportarBdCsv" class="btn btn-outline">Exportar a CSV (ZIP)</button>
+              </div>
+              <p class="ayuda-campo">Cada copia incluye todas las tablas, relaciones, índices, disparadores y vistas, con verificación de integridad, checksum SHA-256 y prueba de restauración.</p>
+              <div class="tabla-scroll">
+                <table class="tabla">
+                  <thead>
+                    <tr>
+                      <th>#</th>
+                      <th>Fecha</th>
+                      <th>Archivo</th>
+                      <th>Tamaño</th>
+                      <th>Versión</th>
+                      <th>Tipo</th>
+                      <th>Cifrado</th>
+                      <th>Checksum</th>
+                      <th>Restauración</th>
+                      <th>Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody id="tablaCopias"></tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="panel">
+              <h3>Restaurar respaldo</h3>
+              <p class="ayuda-campo">Seleccione un archivo .db para reemplazar la base de datos actual. La aplicación debe reiniciarse para aplicar los cambios.</p>
+              <div class="toolbar">
+                <input type="file" id="inputRestaurar" accept=".db" class="input input-file" />
+                <button id="btnRestaurar" class="btn btn-warning">Restaurar base de datos</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="tab-panel hidden" data-panel="programacion">
+            <div class="panel">
+              <h3>Programación de copias automáticas</h3>
+              <div class="form-grid">
+                <div class="campo">
+                  <label class="switch-inline"><input type="checkbox" id="progActivo" /> Activar copias automáticas</label>
+                </div>
+                <div class="campo">
+                  <label>Frecuencia</label>
+                  <select id="progFrecuencia" class="input select-input">
+                    <option value="diaria">Diaria</option>
+                    <option value="semanal">Semanal</option>
+                    <option value="mensual">Mensual</option>
+                    <option value="personalizada">Personalizada (por horas)</option>
+                  </select>
+                </div>
+                <div class="campo">
+                  <label>Hora de ejecución</label>
+                  <input type="time" id="progHora" class="input" value="22:00" />
+                </div>
+                <div class="campo" id="progDiaSemanaCampo">
+                  <label>Día de la semana (semanal)</label>
+                  <select id="progDiaSemana" class="input select-input">
+                    <option value="0">Domingo</option>
+                    <option value="1" selected>Lunes</option>
+                    <option value="2">Martes</option>
+                    <option value="3">Miércoles</option>
+                    <option value="4">Jueves</option>
+                    <option value="5">Viernes</option>
+                    <option value="6">Sábado</option>
+                  </select>
+                </div>
+                <div class="campo" id="progDiaMesCampo">
+                  <label>Día del mes (mensual)</label>
+                  <input type="number" id="progDiaMes" class="input" min="1" max="28" value="1" />
+                </div>
+                <div class="campo" id="progHorasCampo">
+                  <label>Intervalo en horas (personalizada)</label>
+                  <input type="number" id="progHoras" class="input" min="1" max="720" value="24" />
+                </div>
+                <div class="campo">
+                  <label>Cantidad máxima de copias a conservar</label>
+                  <input type="number" id="progMaxCopias" class="input" min="1" max="365" value="30" />
+                </div>
+                <div class="campo">
+                  <label class="switch-inline"><input type="checkbox" id="progCifrado" checked /> Cifrar las copias (obligatorio en producción)</label>
+                </div>
+                <div class="campo">
+                  <label class="switch-inline"><input type="checkbox" id="progRedundancia" checked /> Almacenamiento redundante</label>
+                </div>
+              </div>
+              <p class="ayuda-campo" id="progInfo"></p>
+              <div class="toolbar">
+                <button id="btnGuardarProgramacion" class="btn btn-primary">Guardar programación</button>
+                <button id="btnEjecutarAhora" class="btn btn-success">Ejecutar ahora</button>
+                <button id="btnVerificarTodas" class="btn btn-outline">Verificar integridad de todas</button>
+              </div>
+              <p class="ayuda-campo">La hora se interpreta en <strong>Colombia (America/Bogota, UTC-5)</strong>, no en UTC del servidor. El programador revisa cada 30 segundos. Si la hora de hoy ya pasó y aún no hay ejecución de ese slot, genera la copia de inmediato. Si falla, reintenta a los 15 minutos. Use <strong>Ejecutar ahora</strong> para forzar una copia y el envío por correo.</p>
+            </div>
+          </div>
+
+          <div class="tab-panel hidden" data-panel="correo">
+            <div class="panel">
+              <h3>Envío de copias por correo</h3>
+              <div class="form-grid">
+                <div class="campo">
+                  <label class="switch-inline"><input type="checkbox" id="correoActivo" /> Enviar copia por correo</label>
+                </div>
+                <div class="campo">
+                  <label>Destinatarios (separados por coma o punto y coma)</label>
+                  <input type="text" id="correoDestinatarios" class="input" placeholder="usuario1@dominio.gov.co; usuario2@dominio.gov.co" />
+                </div>
+                <div class="campo">
+                  <label>Asunto del correo</label>
+                  <input type="text" id="correoAsunto" class="input" />
+                </div>
+                <div class="campo">
+                  <label>Tamaño máximo del adjunto (MB)</label>
+                  <input type="number" id="correoAdjuntoMax" class="input" min="1" max="100" value="20" />
+                </div>
+                <div class="campo">
+                  <label>Reintentos en caso de fallo</label>
+                  <input type="number" id="correoReintentos" class="input" min="1" max="10" value="3" />
+                </div>
+              </div>
+              <p class="ayuda-campo">Si la copia supera el tamaño máximo, se envía un enlace seguro de descarga (válido 72 horas) en lugar del adjunto. Cada envío queda registrado en la auditoría.</p>
+
+              <h3 style="margin-top:22px">Servidor SMTP</h3>
+              <div class="form-grid">
+                <div class="campo">
+                  <label class="switch-inline"><input type="checkbox" id="smtpActivo" /> Habilitar envío real por SMTP</label>
+                </div>
+                <div class="campo">
+                  <label>Proveedor</label>
+                  <select id="smtpProveedor" class="input select-input">
+                    <option value="">Personalizado</option>
+                    <option value="outlook">Outlook / Microsoft 365 (Rama Judicial)</option>
+                    <option value="gmail">Gmail</option>
+                  </select>
+                </div>
+                <div class="campo">
+                  <label>Servidor SMTP</label>
+                  <input type="text" id="smtpHost" class="input" placeholder="smtp.gmail.com o smtp.office365.com" />
+                </div>
+                <div class="campo">
+                  <label>Puerto</label>
+                  <input type="number" id="smtpPuerto" class="input" value="587" />
+                </div>
+                <div class="campo">
+                  <label class="switch-inline"><input type="checkbox" id="smtpSeguro" /> Conexión SSL directa (puerto 465)</label>
+                </div>
+                <div class="campo">
+                  <label>Usuario (correo completo, no el usuario de esta aplicación)</label>
+                  <input type="text" id="smtpUsuario" class="input" autocomplete="off" placeholder="cuenta@gmail.com o cuenta@cendoj.ramajudicial.gov.co" />
+                </div>
+                <div class="campo">
+                  <label>Contraseña</label>
+                  <input type="password" id="smtpPassword" class="input" autocomplete="new-password" placeholder="Dejar en blanco para conservar" />
+                </div>
+                <div class="campo">
+                  <label>Correo remitente</label>
+                  <input type="text" id="smtpRemitente" class="input" placeholder="juzgado@dominio.gov.co" />
+                </div>
+                <div class="campo">
+                  <label>Nombre del remitente</label>
+                  <input type="text" id="smtpRemitenteNombre" class="input" />
+                </div>
+              </div>
+              <div class="toolbar">
+                <button id="btnGuardarCorreo" class="btn btn-primary">Guardar configuración</button>
+                <button id="btnProbarCorreo" class="btn btn-outline">Enviar correo de prueba</button>
+              </div>
+              <p id="correoMsg" class="ayuda-campo"></p>
+              <p class="ayuda-campo" id="smtpAyudaProveedor">Outlook: <code>smtp.office365.com</code>, puerto <code>587</code>, SSL directo desmarcado. Gmail: <code>smtp.gmail.com</code>, puerto <code>587</code>, SSL directo desmarcado. En ambos el usuario y el remitente deben ser el mismo correo completo. Con verificación en dos pasos use una contraseña de aplicación, no la contraseña normal.</p>
+            </div>
+
+            <div class="panel">
+              <h3>Historial de envíos</h3>
+              <div class="tabla-scroll">
+                <table class="tabla">
+                  <thead>
+                    <tr>
+                      <th>Fecha</th>
+                      <th>Copia</th>
+                      <th>Destinatarios</th>
+                      <th>Asunto</th>
+                      <th>Estado</th>
+                      <th>Intentos</th>
+                      <th>Detalle</th>
+                    </tr>
+                  </thead>
+                  <tbody id="tablaEnvios"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <div class="tab-panel hidden" data-panel="boveda">
+            <div class="panel">
+              <h3>Bóveda inmutable ante intrusión</h3>
+              <p class="ayuda-campo">Cada copia se sella en <code>data/vault/copias</code> como archivo de solo lectura, con hash SHA-256 y cadena encadenada. Un atacante con acceso a la aplicación no puede modificar ni borrar esas copias desde el panel. El punto limpio es la última copia automática verificada, lista para restaurar.</p>
+              <div class="toolbar">
+                <button id="btnVerificarBoveda" class="btn btn-primary">Verificar cadena e integridad</button>
+                <button id="btnExportarOffline" class="btn btn-outline">Exportar paquete offline (air-gap)</button>
+              </div>
+              <p id="bovedaEstado" class="ayuda-campo"></p>
+              <p id="bovedaPuntoLimpio" class="ayuda-campo"></p>
+              <div class="tabla-scroll">
+                <table class="tabla">
+                  <thead>
+                    <tr>
+                      <th>Fecha sello</th>
+                      <th>Copia</th>
+                      <th>Checksum SHA-256</th>
+                      <th>Eslabón</th>
+                    </tr>
+                  </thead>
+                  <tbody id="tablaBoveda"></tbody>
+                </table>
+              </div>
+            </div>
+            <div class="panel">
+              <h3>Recuperación paso a paso</h3>
+              <ol class="ayuda-campo lista-recuperacion">
+                <li>Aísle el servidor (no use la copia operativa si hay sospecha de intrusión).</li>
+                <li>Verifique la cadena: <code>node scripts/verificar-boveda.js</code></li>
+                <li>Elija el punto limpio anterior al ataque (última copia automática sellada).</li>
+                <li>Restaure: <code>node scripts/recuperar.js --punto-limpio</code></li>
+                <li>Confirme el checksum y reinicie el servicio.</li>
+                <li>Cambie claves de administrador, SMTP y <code>BACKUP_KEY</code>.</li>
+              </ol>
+            </div>
+          </div>
+        </section>
+
+        <section id="vista-auditoria" class="vista hidden">
+          <div class="vista-titulo">
+            <h2>Auditoría del Sistema</h2>
+            <p>Registro inmutable de todas las acciones: quién, qué, cuándo, desde dónde y con qué resultado.</p>
+          </div>
+
+          <div class="panel">
+            <div class="toolbar toolbar-busqueda">
+              <input type="text" id="audTexto" class="input" placeholder="Buscar en descripción, usuario, IP, valores..." />
+              <select id="audUsuario" class="input select-input"></select>
+              <select id="audAccion" class="input select-input"></select>
+              <select id="audModulo" class="input select-input"></select>
+              <select id="audExito" class="input select-input">
+                <option value="">Todos los resultados</option>
+                <option value="1">Exitosos</option>
+                <option value="0">Fallidos</option>
+              </select>
+              <input type="date" id="audDesde" class="input" title="Desde" />
+              <input type="date" id="audHasta" class="input" title="Hasta" />
+              <select id="audPorPagina" class="input select-input">
+                <option value="25">25 por página</option>
+                <option value="50">50 por página</option>
+                <option value="100">100 por página</option>
+              </select>
+              <button id="btnAudBuscar" class="btn btn-primary">Buscar</button>
+              <button id="btnAudLimpiar" class="btn btn-outline">Limpiar</button>
+            </div>
+            <div class="toolbar">
+              <button id="btnAudCsv" class="btn btn-outline btn-sm">Exportar CSV</button>
+              <button id="btnAudExcel" class="btn btn-outline btn-sm">Exportar Excel</button>
+              <button id="btnAudPdf" class="btn btn-outline btn-sm">Exportar PDF</button>
+              <button id="btnAudVerificar" class="btn btn-primary btn-sm">Verificar integridad de la auditoría</button>
+              <span id="audIntegridad" class="aud-integridad"></span>
+            </div>
+            <div id="audResumen" class="aud-resumen"></div>
+            <div class="tabla-scroll">
+              <table class="tabla">
+                <thead>
+                  <tr>
+                    <th>Fecha</th>
+                    <th>Usuario</th>
+                    <th>Rol</th>
+                    <th>Acción</th>
+                    <th>Módulo</th>
+                    <th>ID registro</th>
+                    <th>Descripción</th>
+                    <th>IP</th>
+                    <th>Dispositivo</th>
+                    <th>Resultado</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody id="tablaAuditoria"></tbody>
+              </table>
+            </div>
+            <div class="paginacion">
+              <button id="audPagAnt" class="btn btn-outline btn-sm">Anterior</button>
+              <span id="audPagInfo">Página 1</span>
+              <button id="audPagSig" class="btn btn-outline btn-sm">Siguiente</button>
+            </div>
+          </div>
+
+          <div class="panel">
+            <h3>Alertas de comportamiento anómalo</h3>
+            <p class="ayuda-campo">El sistema detecta automáticamente patrones de riesgo, como intentos fallidos reiterados o accesos denegados repetidos.</p>
+            <div id="listaAlertasAuditoria" class="aud-alertas"></div>
+          </div>
+        </section>
+
+        <section id="vista-estructura" class="vista hidden">
+          <div class="vista-titulo">
+            <h2>Estructura de las bases de datos</h2>
+            <p>Agregue, modifique o elimine columnas de las tablas y ajuste la configuración de cada módulo.</p>
+          </div>
+          <div class="panel">
+            <div class="toolbar">
+              <select id="estTabla" class="input select-input"></select>
+              <button id="btnNuevaColumna" class="btn btn-success">+ Nueva columna</button>
+              <button id="btnRenombrarTitulos" class="btn btn-outline">Renombrar títulos</button>
+              <button id="btnConfigTabla" class="btn btn-primary">Configuración del módulo</button>
+              <button id="btnEliminarTabla" class="btn btn-danger">Eliminar módulo</button>
+            </div>
+            <div class="tabla-scroll">
+              <table class="tabla">
+                <thead>
+                  <tr>
+                    <th>Orden</th>
+                    <th>Columna</th>
+                    <th>Etiqueta</th>
+                    <th>Tipo</th>
+                    <th>Sección</th>
+                    <th>Visible</th>
+                    <th>Opciones</th>
+                    <th>Acciones</th>
+                  </tr>
+                </thead>
+                <tbody id="tablaColumnas"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+    <footer class="app-footer">
+      <p>Creado por: Ing. José Julián Jaramillo Muñoz y la Abogada Judith Jackeline Jaramillo Muñoz</p>
+    </footer>
+  </div>
+
+  <div id="modalRegistro" class="modal hidden">
+    <div class="modal-box modal-box-ancho">
+      <div class="modal-header">
+        <h3 id="modalRegistroTitulo">Registro</h3>
+        <button class="modal-close" data-cerrar="modalRegistro">&times;</button>
+      </div>
+      <form id="formRegistro" class="modal-body">
+        <input type="hidden" id="regId" />
+        <div id="regCampos"></div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" data-cerrar="modalRegistro">Cancelar</button>
+          <button type="submit" class="btn btn-success">Guardar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div id="modalColumna" class="modal hidden">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3 id="modalColumnaTitulo">Nueva columna</h3>
+        <button class="modal-close" data-cerrar="modalColumna">&times;</button>
+      </div>
+      <form id="formColumna" class="modal-body">
+        <input type="hidden" id="colNombreOriginal" />
+        <div class="campo">
+          <label>Nombre (identificador) *</label>
+          <input type="text" id="colNombre" required placeholder="p. ej. observacion_nueva" />
+        </div>
+        <div class="campo">
+          <label>Etiqueta (texto visible) *</label>
+          <input type="text" id="colEtiqueta" required placeholder="p. ej. OBSERVACIÓN NUEVA" />
+        </div>
+        <div class="campo">
+          <label>Tipo de dato</label>
+          <select id="colTipo" class="input select-input">
+            <option value="texto">Texto</option>
+            <option value="fecha">Fecha</option>
+            <option value="numerico">Numérico</option>
+            <option value="seleccion">Selección de lista</option>
+          </select>
+        </div>
+        <div class="campo">
+          <label>Sección del formulario</label>
+          <input type="text" id="colSeccion" placeholder="p. ej. Etapa procesal" />
+        </div>
+        <div class="campo">
+          <label>
+            <input type="checkbox" id="colVisible" /> Mostrar en la tabla del módulo
+          </label>
+        </div>
+        <div class="campo" id="colOpcionesCampo" style="display:none">
+          <label>Opciones de la lista (una por línea)</label>
+          <textarea id="colOpciones" class="input" rows="6" placeholder="Opción 1&#10;Opción 2&#10;Opción 3"></textarea>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" data-cerrar="modalColumna">Cancelar</button>
+          <button type="submit" class="btn btn-success">Guardar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div id="modalTabla" class="modal hidden">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3 id="modalTablaTitulo">Configuración del módulo</h3>
+        <button class="modal-close" data-cerrar="modalTabla">&times;</button>
+      </div>
+      <form id="formTabla" class="modal-body">
+        <div class="campo">
+          <label>Título</label>
+          <input type="text" id="tTitulo" required />
+        </div>
+        <div class="campo">
+          <label>Descripción</label>
+          <input type="text" id="tDescripcion" />
+        </div>
+        <div class="campo">
+          <label>Campo de fecha de entrada</label>
+          <select id="tFechaEntrada" class="input select-input"><option value="">— Ninguno —</option></select>
+        </div>
+        <div class="campo">
+          <label>Campo de fecha de salida</label>
+          <select id="tFechaSalida" class="input select-input"><option value="">— Ninguno —</option></select>
+        </div>
+        <div class="campo">
+          <label>Columnas visibles en la tabla</label>
+          <div id="tVisibles" class="visibles-lista"></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" data-cerrar="modalTabla">Cancelar</button>
+          <button type="submit" class="btn btn-success">Guardar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div id="modalUsuario" class="modal hidden">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3 id="modalUsuarioTitulo">Nuevo usuario</h3>
+        <button class="modal-close" data-cerrar="modalUsuario">&times;</button>
+      </div>
+      <form id="formUsuario" class="modal-body">
+        <input type="hidden" id="uId" />
+        <div class="campo">
+          <label>Nombre completo *</label>
+          <input type="text" id="uNombre" required />
+        </div>
+        <div class="campo">
+          <label>Usuario (login) *</label>
+          <input type="text" id="uUsername" required />
+        </div>
+        <div class="campo">
+          <label>Contraseña *</label>
+          <input type="password" id="uPassword" autocomplete="new-password" />
+          <p class="ayuda-campo" id="uPasswordAyuda">Mínimo 6 caracteres, con mayúscula, minúscula, número y carácter especial. Ejemplo: Ab3$xy</p>
+        </div>
+        <div class="campo">
+          <label>Rol *</label>
+          <select id="uRol" class="input select-input">
+            <option value="consulta">Consulta (solo ver y reportes)</option>
+            <option value="usuario">Usuario (registrar y editar registros)</option>
+            <option value="administrador">Administrador (todo el sistema)</option>
+          </select>
+        </div>
+        <div class="campo">
+          <label>Estado</label>
+          <select id="uActivo" class="input select-input">
+            <option value="1">Activo</option>
+            <option value="0">Inactivo</option>
+          </select>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" data-cerrar="modalUsuario">Cancelar</button>
+          <button type="submit" class="btn btn-success">Guardar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div id="modalTitulos" class="modal hidden">
+    <div class="modal-box modal-box-ancho">
+      <div class="modal-header">
+        <h3>Renombrar títulos de columnas — <span id="titulosModulo"></span></h3>
+        <button class="modal-close" data-cerrar="modalTitulos">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p style="color:#5a6b7c;margin-bottom:10px">Haga clic sobre un título para editarlo y presione Enter para guardar cada cambio.</p>
+        <div id="titulosLista" class="titulos-lista"></div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" data-cerrar="modalTitulos">Cerrar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="modalAgenda" class="modal hidden">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3 id="modalAgendaTitulo">Agendar audiencia</h3>
+        <button class="modal-close" data-cerrar="modalAgenda">&times;</button>
+      </div>
+      <form id="formAgenda" class="modal-body">
+        <input type="hidden" id="agId" />
+        <div class="campo">
+          <label>Fecha *</label>
+          <input type="date" id="agFecha" class="input" required />
+        </div>
+        <div class="campo">
+          <label>Hora</label>
+          <input type="text" id="agHora" class="input" placeholder="p. ej. 8:30 a.m." />
+        </div>
+        <div class="campo">
+          <label>Tipo de audiencia</label>
+          <input type="text" id="agTipo" class="input" list="dlTipoAu" placeholder="Acusación, Preparatoria, Juicio Oral..." />
+          <datalist id="dlTipoAu">
+            <option value="Acusación"></option>
+            <option value="Preparatoria"></option>
+            <option value="Juicio Oral"></option>
+            <option value="Preacuerdo"></option>
+            <option value="Preclusión"></option>
+            <option value="Sentido del Fallo"></option>
+            <option value="447"></option>
+            <option value="Lectura de Sentencia"></option>
+          </datalist>
+        </div>
+        <div class="campo">
+          <label>Proceso / radicado</label>
+          <input type="text" id="agProceso" class="input" />
+        </div>
+        <div class="campo">
+          <label>Responsable</label>
+          <input type="text" id="agResp" class="input" />
+        </div>
+        <div class="campo">
+          <label>Estado</label>
+          <select id="agEstado" class="input select-input">
+            <option value="programada">Programada</option>
+            <option value="realizada">Realizada</option>
+            <option value="aplazada">Aplazada</option>
+            <option value="suspendida">Suspendida</option>
+            <option value="cancelada">Cancelada</option>
+          </select>
+        </div>
+        <div class="campo">
+          <label>Notas</label>
+          <textarea id="agNotas" class="input" rows="2"></textarea>
+        </div>
+        <div class="campo">
+          <label><input type="checkbox" id="agAlerta" checked /> Generar alerta</label>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" data-cerrar="modalAgenda">Cancelar</button>
+          <button type="submit" class="btn btn-success">Guardar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div id="modalEstDetalle" class="modal hidden">
+    <div class="modal-box modal-box-ancho">
+      <div class="modal-header">
+        <h3 id="estDetalleTitulo">Detalle de registros</h3>
+        <button class="modal-close" data-cerrar="modalEstDetalle">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p class="ayuda-ia" id="estDetalleAyuda">Solo registros con fecha en el rango. Cada fila alimenta una casilla del bloque.</p>
+        <div class="tabla-scroll">
+          <table class="tabla" id="estDetalleTabla">
+            <thead>
+              <tr>
+                <th>Id</th>
+                <th>Radicado</th>
+                <th>No.</th>
+                <th>Procesado(s)</th>
+                <th>DELITO ESTADISTICA</th>
+                <th>Fecha ingreso</th>
+                <th>Fecha salida</th>
+                <th>Casilla entrada</th>
+                <th>Casilla salida</th>
+                <th>E</th>
+                <th>S</th>
+                <th>Fin</th>
+              </tr>
+            </thead>
+            <tbody id="estDetalleCuerpo"></tbody>
+          </table>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" data-cerrar="modalEstDetalle">Cerrar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="modalPassword" class="modal hidden">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3>Cambiar contraseña</h3>
+        <button class="modal-close" data-cerrar="modalPassword" type="button">&times;</button>
+      </div>
+      <form id="formPassword" class="modal-body">
+        <p class="ayuda-campo">Ingrese su contraseña actual y defina una nueva que cumpla la especificación de clave segura.</p>
+        <div class="campo">
+          <label for="passActual">Contraseña actual *</label>
+          <input type="password" id="passActual" autocomplete="current-password" required />
+        </div>
+        <div class="campo">
+          <label for="passNueva">Nueva contraseña *</label>
+          <input type="password" id="passNueva" autocomplete="new-password" required minlength="6" />
+        </div>
+        <div class="campo">
+          <label for="passConfirmar">Confirmar nueva contraseña *</label>
+          <input type="password" id="passConfirmar" autocomplete="new-password" required minlength="6" />
+        </div>
+        <div class="clave-especificacion">
+          <p class="clave-especificacion-titulo">Especificación de clave segura</p>
+          <ul id="passRequisitos">
+            <li data-req="longitud">Longitud mínima: 6 caracteres</li>
+            <li data-req="mayuscula">Al menos 1 letra mayúscula (A-Z)</li>
+            <li data-req="minuscula">Al menos 1 letra minúscula (a-z)</li>
+            <li data-req="numero">Al menos 1 número (0-9)</li>
+            <li data-req="especial">Al menos 1 carácter especial (!@#$%^&amp;*()_+-=[]{}|;:,.&lt;&gt;?)</li>
+          </ul>
+          <p class="clave-especificacion-pie">Ejemplo válido: <code>Ab3$xy</code>. No se permite: espacios, datos personales, secuencias (123456, qwerty) ni reutilizar claves anteriores.</p>
+        </div>
+        <p id="passError" class="error-msg"></p>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" data-cerrar="modalPassword">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Guardar contraseña</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div id="modalAuditoriaDetalle" class="modal hidden">
+    <div class="modal-box modal-box-ancho">
+      <div class="modal-header">
+        <h3>Detalle del registro de auditoría</h3>
+        <button class="modal-close" data-cerrar="modalAuditoriaDetalle" type="button">&times;</button>
+      </div>
+      <div class="modal-body" id="audDetalleCuerpo"></div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+  <script src="/js/app.js?v=70"></script>
+</body>
+</html>
