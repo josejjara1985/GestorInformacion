@@ -23,7 +23,8 @@ const state = {
   audPagina: 1,
   audPaginas: 1,
   audRegistros: {},
-  bdConfig: null
+  bdConfig: null,
+  directorios: null
 }
 
 const $ = (sel) => document.querySelector(sel)
@@ -872,13 +873,155 @@ function renderModulo(registros, data) {
     .join('')
 }
 
+const ORDEN_GRUPOS_FORM = [
+  'Identificación',
+  'Partes del proceso',
+  'Audiencia programada (Orden verbal)',
+  'Etapa procesal',
+  'Salidas y decisiones definitivas en la instancia penal especializado',
+  'Cumplimiento – Apelación',
+  'Cumplimiento – Ejecutoria',
+  'Procesos archivados definitivamente',
+  'Sentencia y fallo',
+  'Salidas y trámites'
+]
+
+const LOOKUP_CAMPOS = {
+  fiscalia: {
+    dir: 'fiscales',
+    map: { celular: 'celular_fiscal', correo: 'correo_fiscal', notificacion: 'direccion_fiscal' }
+  },
+  defensor: {
+    dir: 'defensores',
+    map: {
+      celular: 'celular_defensor',
+      correo: 'correo_defensor',
+      notificacion: 'direccion_defensor',
+      cedula: 'cedula_defensor',
+      tarjeta: 'tarjeta_defensor'
+    }
+  },
+  victima: {
+    dir: 'victimas',
+    map: { celular: 'celular_victima', correo: 'correo_victima', notificacion: 'direccion_victima' }
+  },
+  rep_victima: {
+    dir: 'defensores',
+    map: {
+      celular: 'celular_rep_victima',
+      correo: 'correo_rep_victima',
+      notificacion: 'direccion_rep_victima'
+    }
+  },
+  defensoria_min_publico: {
+    dir: 'procuradores',
+    map: {
+      celular: 'celular_min_publico',
+      correo: 'correo_min_publico',
+      notificacion: 'direccion_min_publico'
+    }
+  }
+}
+
+async function cargarDirectorios() {
+  if (state.directorios) return state.directorios
+  try {
+    state.directorios = await api('/api/directorios')
+  } catch (err) {
+    state.directorios = { fiscales: [], defensores: [], procuradores: [], victimas: [], inpec: [], rama_judicial: [] }
+  }
+  return state.directorios
+}
+
+function opcionesLookup(campo) {
+  const conf = LOOKUP_CAMPOS[campo]
+  const dirs = state.directorios || {}
+  const filas = conf ? (dirs[conf.dir] || []) : []
+  const nombres = filas.map((f) => f.etiqueta || f.nombre).filter(Boolean)
+  const col = (state.tablas[state.modulo] || {}).columnas || []
+  const estaticas = ((col.find((c) => c.nombre === campo) || {}).opciones || [])
+  return [...new Set(nombres.concat(estaticas))]
+}
+
+function aplicarLookup(nombreCampo, valor) {
+  const conf = LOOKUP_CAMPOS[nombreCampo]
+  if (!conf) return
+  const filas = (state.directorios && state.directorios[conf.dir]) || []
+  const q = String(valor || '').trim().toLowerCase()
+  if (!q) return
+  const fila = filas.find((f) => String(f.etiqueta || f.nombre || '').trim().toLowerCase() === q)
+    || filas.find((f) => String(f.etiqueta || f.nombre || '').toLowerCase().includes(q))
+  if (!fila) return
+  const setVal = (campo, v) => {
+    const el = document.getElementById(`campo_${state.modulo}_${campo}`)
+    if (!el || v == null || v === '') return
+    el.value = v
+  }
+  setVal(conf.map.celular, fila.celular)
+  setVal(conf.map.correo, fila.correo)
+  setVal(conf.map.notificacion, fila.notificacion)
+  if (conf.map.cedula) setVal(conf.map.cedula, (fila.extra || {}).cedula)
+  if (conf.map.tarjeta) setVal(conf.map.tarjeta, (fila.extra || {}).tarjeta)
+}
+
+function engancharLookups() {
+  Object.keys(LOOKUP_CAMPOS).forEach((nombre) => {
+    const el = document.getElementById(`campo_${state.modulo}_${nombre}`)
+    if (!el) return
+    const aplicar = () => aplicarLookup(nombre, el.value)
+    el.addEventListener('change', aplicar)
+    el.addEventListener('blur', aplicar)
+  })
+}
+
+function opcionesCarcel() {
+  const inpec = (state.directorios && state.directorios.inpec) || []
+  const ciudades = inpec.map((f) => f.extra && f.extra.ciudad).filter(Boolean)
+  const col = ((state.tablas.procesos || {}).columnas || []).find((c) => c.nombre === 'carcel')
+  return [...new Set((col && col.opciones ? col.opciones : []).concat(ciudades))]
+}
+
+function aplicarCarcel(tr) {
+  const carcelEl = tr.querySelector('.proc-carcel')
+  if (!carcelEl) return
+  const q = String(carcelEl.value || '').trim().toLowerCase()
+  if (!q) return
+  const filas = (state.directorios && state.directorios.inpec) || []
+  const fila = filas.find((f) => String((f.extra && f.extra.ciudad) || f.etiqueta || '').trim().toLowerCase() === q)
+    || filas.find((f) => String(f.etiqueta || '').toLowerCase().includes(q))
+  if (!fila) return
+  const dir = tr.querySelector('.proc-direccion')
+  const cel = tr.querySelector('.proc-celular')
+  if (dir && !dir.value) dir.value = fila.notificacion || ''
+  if (cel && !cel.value) cel.value = fila.celular || ''
+}
+
 async function abrirRegistro(id) {
   const conf = state.tablas[state.modulo]
   $('#modalRegistroTitulo').textContent = id ? `Editar — ${conf.titulo}` : `Nuevo — ${conf.titulo}`
   $('#formRegistro').reset()
   $('#regId').value = id || ''
+  if (state.modulo === 'procesos') await cargarDirectorios()
 
   const camposVisibles = conf.columnas.filter((c) => !c.no_formulario)
+  const ordenForm = conf.orden_formulario || []
+  if (ordenForm.length) {
+    const porNombre = {}
+    for (const c of camposVisibles) porNombre[c.nombre] = c
+    const ordenados = []
+    const vistos = new Set()
+    for (const n of ordenForm) {
+      if (porNombre[n] && !vistos.has(n)) {
+        ordenados.push(porNombre[n])
+        vistos.add(n)
+      }
+    }
+    for (const c of camposVisibles) {
+      if (!vistos.has(c.nombre)) ordenados.push(c)
+    }
+    camposVisibles.length = 0
+    camposVisibles.push(...ordenados)
+  }
   const camposPorGrupo = {}
   for (const c of camposVisibles) {
     const grupo = c.seccion || 'General'
@@ -886,10 +1029,7 @@ async function abrirRegistro(id) {
     camposPorGrupo[grupo].push(c)
   }
 
-  const ordenGrupos = [
-    'Identificación', 'Partes del proceso', 'Etapa procesal',
-    'Sentencia y fallo', 'Salidas y trámites'
-  ].filter((g) => camposPorGrupo[g])
+  const ordenGrupos = ORDEN_GRUPOS_FORM.filter((g) => camposPorGrupo[g])
   const restantes = Object.keys(camposPorGrupo).filter((g) => !ordenGrupos.includes(g))
   const todosGrupos = [...ordenGrupos, ...restantes]
 
@@ -914,16 +1054,17 @@ async function abrirRegistro(id) {
       let control
       if (tipo === 'procesados') {
         control = `<div class="tabla-scroll"><table class="tabla tabla-procesados">
-          <thead><tr><th>Nombre</th><th>C.C.</th><th>Detenido</th><th>Cárcel</th><th>Dirección</th><th></th></tr></thead>
+          <thead><tr><th>Nombre</th><th>C.C.</th><th>Sexo</th><th>Detenido</th><th>Cárcel</th><th>Dirección - Correo</th><th>Celular</th><th></th></tr></thead>
           <tbody id="procesados_filas_${state.modulo}"></tbody></table></div>
           <button type="button" class="btn btn-outline btn-sm" onclick="agregarFilaProcesado('${state.modulo}')">Agregar procesado</button>`
       } else if (tipo === 'fecha') {
         control = `<input type="date" id="${id}" class="input" />`
       } else if (tipo === 'numerico') {
         control = `<input type="number" step="any" id="${id}" class="input" />`
-      } else if (tipo === 'seleccion') {
+      } else if (tipo === 'seleccion' || LOOKUP_CAMPOS[c.nombre]) {
         const list = `dl_${state.modulo}_${c.nombre}`
-        const opciones = (c.opciones || []).map((o) => `<option value="${esc(o)}"></option>`).join('')
+        const ops = LOOKUP_CAMPOS[c.nombre] ? opcionesLookup(c.nombre) : (c.opciones || [])
+        const opciones = ops.map((o) => `<option value="${esc(o)}"></option>`).join('')
         control = `<input type="text" id="${id}" class="input" list="${list}" autocomplete="off" placeholder="Busque o escriba una opción nueva" /><datalist id="${list}">${opciones}</datalist>`
       } else if (largo || (/observ|informe|descripcion|anotacion/.test(c.nombre) && c.nombre.length > 12)) {
         control = `<textarea id="${id}" class="input" rows="${largo ? 3 : 2}"></textarea>`
@@ -958,17 +1099,27 @@ async function abrirRegistro(id) {
     }
   }
 
+  engancharLookups()
   $('#modalRegistro').classList.remove('hidden')
 }
 
 function filaProcesadoHtml(f) {
   f = f || {}
+  const uid = 'dl_carcel_' + Math.random().toString(36).slice(2, 10)
+  const opsCarcel = opcionesCarcel().map((o) => `<option value="${esc(o)}"></option>`).join('')
+  const opsDet = ['SI', 'NO', 'LIBERTAD', 'DOMICILIARIA', 'FUGADO', 'SIN DATOS']
+    .map((o) => `<option value="${esc(o)}"></option>`).join('')
+  const opsSexo = ['Mujer', 'Hombre', 'Otro'].map((o) => `<option value="${esc(o)}"></option>`).join('')
+  const uidSexo = 'dl_sexo_' + uid
+  const uidDet = 'dl_det_' + uid
   return `<tr>
-    <td><input type="text" class="input celda-procesado proc-nombre" value="${esc(f.nombre || '')}" /></td>
+    <td><input type="text" class="input celda-procesado proc-nombre" value="${esc(f.nombre || '')}" placeholder="Nombres y apellidos" /></td>
     <td><input type="text" class="input celda-procesado proc-cc" value="${esc(f.c_c || '')}" /></td>
-    <td><input type="text" class="input celda-procesado proc-detenido" value="${esc(f.detenido || '')}" /></td>
-    <td><input type="text" class="input celda-procesado proc-carcel" value="${esc(f.carcel || '')}" /></td>
+    <td><input type="text" class="input celda-procesado proc-sexo" list="${uidSexo}" value="${esc(f.sexo || '')}" autocomplete="off" /><datalist id="${uidSexo}">${opsSexo}</datalist></td>
+    <td><input type="text" class="input celda-procesado proc-detenido" list="${uidDet}" value="${esc(f.detenido || '')}" autocomplete="off" /><datalist id="${uidDet}">${opsDet}</datalist></td>
+    <td><input type="text" class="input celda-procesado proc-carcel" list="${uid}" value="${esc(f.carcel || '')}" autocomplete="off" placeholder="Busque o escriba" /><datalist id="${uid}">${opsCarcel}</datalist></td>
     <td><input type="text" class="input celda-procesado proc-direccion" value="${esc(f.direccion || '')}" /></td>
+    <td><input type="text" class="input celda-procesado proc-celular" value="${esc(f.celular || '')}" /></td>
     <td><button type="button" class="btn-link" onclick="this.closest('tr').remove()">Quitar</button></td>
   </tr>`
 }
@@ -977,6 +1128,14 @@ function agregarFilaProcesado(modulo, datos) {
   const tb = document.getElementById(`procesados_filas_${modulo}`)
   if (!tb) return
   tb.insertAdjacentHTML('beforeend', filaProcesadoHtml(datos))
+  const tr = tb.lastElementChild
+  if (!tr) return
+  const carcelEl = tr.querySelector('.proc-carcel')
+  if (carcelEl) {
+    const aplicar = () => aplicarCarcel(tr)
+    carcelEl.addEventListener('change', aplicar)
+    carcelEl.addEventListener('blur', aplicar)
+  }
 }
 
 function leerProcesados(modulo) {
@@ -985,10 +1144,12 @@ function leerProcesados(modulo) {
   return [...tb.querySelectorAll('tr')].map((tr) => ({
     nombre: (tr.querySelector('.proc-nombre') || {}).value ? tr.querySelector('.proc-nombre').value.trim() : '',
     c_c: (tr.querySelector('.proc-cc') || {}).value ? tr.querySelector('.proc-cc').value.trim() : '',
+    sexo: (tr.querySelector('.proc-sexo') || {}).value ? tr.querySelector('.proc-sexo').value.trim() : '',
     detenido: (tr.querySelector('.proc-detenido') || {}).value ? tr.querySelector('.proc-detenido').value.trim() : '',
     carcel: (tr.querySelector('.proc-carcel') || {}).value ? tr.querySelector('.proc-carcel').value.trim() : '',
-    direccion: (tr.querySelector('.proc-direccion') || {}).value ? tr.querySelector('.proc-direccion').value.trim() : ''
-  })).filter((f) => f.nombre || f.c_c || f.detenido || f.carcel || f.direccion)
+    direccion: (tr.querySelector('.proc-direccion') || {}).value ? tr.querySelector('.proc-direccion').value.trim() : '',
+    celular: (tr.querySelector('.proc-celular') || {}).value ? tr.querySelector('.proc-celular').value.trim() : ''
+  })).filter((f) => f.nombre || f.c_c || f.detenido || f.carcel || f.direccion || f.celular || f.sexo)
 }
 
 function hidratarProcesados(r) {
@@ -1010,9 +1171,11 @@ function hidratarProcesados(r) {
       filas.push({
         nombre: nombres[i] || '',
         c_c: cedulas[i] || '',
+        sexo: i === 0 ? (r.sexo || '') : '',
         detenido: i === 0 ? (r.detenido || '') : '',
         carcel: i === 0 ? (r.carcel || '') : '',
-        direccion: i === 0 ? (r.direccion_detenido || '') : ''
+        direccion: i === 0 ? (r.direccion_detenido || '') : '',
+        celular: i === 0 ? (r.celular || '') : ''
       })
     }
   }
@@ -1040,6 +1203,12 @@ async function guardarRegistro(e) {
       body.detenido = (filas.find((f) => f.detenido) || {}).detenido || ''
       body.carcel = (filas.find((f) => f.carcel) || {}).carcel || ''
       body.direccion_detenido = (filas.find((f) => f.direccion) || {}).direccion || ''
+      body.celular = (filas.find((f) => f.celular) || {}).celular || ''
+      body.sexo = (filas.find((f) => f.sexo) || {}).sexo || ''
+      const nH = filas.filter((f) => /^hombre/i.test(f.sexo)).length
+      const nM = filas.filter((f) => /^mujer/i.test(f.sexo)).length
+      if (nH) body.no_hombres = String(nH)
+      if (nM) body.no_mujeres = String(nM)
       continue
     }
     const el = document.getElementById(`campo_${state.modulo}_${c.nombre}`)

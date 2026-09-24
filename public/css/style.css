@@ -768,11 +768,12 @@ input[type="date"] { max-width: 100%; min-width: 0; }
   padding: 0 8px;
 }
 .grupo-campos .campo { margin-bottom: 12px; }
-.tabla-procesados { min-width: 760px; }
+.tabla-procesados { min-width: 1100px; }
 .tabla-procesados th, .tabla-procesados td { padding: 6px 6px; vertical-align: middle; }
-.tabla-procesados .celda-procesado { min-width: 130px; padding: 8px 10px; font-size: 13px; }
-.tabla-procesados .proc-nombre { min-width: 240px; }
+.tabla-procesados .celda-procesado { min-width: 110px; padding: 8px 10px; font-size: 13px; }
+.tabla-procesados .proc-nombre { min-width: 220px; }
 .tabla-procesados .proc-direccion { min-width: 220px; }
+.tabla-procesados .proc-celular { min-width: 130px; }
 
 /* ============ BOTONES ============ */
 .btn {

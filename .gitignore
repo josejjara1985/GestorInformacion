@@ -1,0 +1,12 @@
+node_modules/
+data/backups/
+data/backups-tmp/
+data/backups-redundante/
+data/vault/
+*.db-shm
+*.db-wal
+.env
+.env.local
+.DS_Store
+Thumbs.db
+*.log

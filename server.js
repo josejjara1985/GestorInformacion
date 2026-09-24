@@ -240,6 +240,134 @@ app.get('/api/tablas', requireAuth, (_req, res) => {
   res.json(getEsquema())
 })
 
+function extraerCelularCorreo(texto) {
+  const t = String(texto || '')
+  const correos = [...t.matchAll(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi)].map((m) => m[0])
+  const celulares = [...t.matchAll(/(?:\+57[\s.-]*)?(?:3\d{2}[\s.-]*\d{3}[\s.-]*\d{4}|3\d{9}|\d{7,10})/g)]
+    .map((m) => m[0].replace(/\s+/g, ' ').trim())
+    .filter((n) => !n.includes('@'))
+  return {
+    celular: [...new Set(celulares)].join(', '),
+    correo: [...new Set(correos)].join('; ')
+  }
+}
+
+function filaNotificacion(tabla, row) {
+  if (tabla === 'fiscales') {
+    const extra = extraerCelularCorreo([row.direccion, row.contacto, row.asistente].join(' '))
+    return {
+      id: row.id,
+      etiqueta: row.fiscal || '',
+      nombre: row.fiscal || '',
+      celular: extra.celular,
+      correo: extra.correo,
+      notificacion: [row.direccion, row.contacto, row.asistente].filter(Boolean).join('\n'),
+      extra: { asistente: row.asistente || '' }
+    }
+  }
+  if (tabla === 'defensores') {
+    const extra = extraerCelularCorreo(row.direccion)
+    return {
+      id: row.id,
+      etiqueta: row.defensa || '',
+      nombre: row.defensa || '',
+      celular: extra.celular,
+      correo: extra.correo,
+      notificacion: row.direccion || '',
+      extra: {
+        cedula: row.no_cedula || '',
+        tarjeta: row.no_tarjeta_profesional || ''
+      }
+    }
+  }
+  if (tabla === 'procuradores') {
+    const etiqueta = [row.procuraduria, row.procurador].filter(Boolean).join(' — ')
+    const notif = [
+      row.correo_institucional,
+      row.celular,
+      row.telefono_oficina,
+      row.direccion,
+      row.sustanciador,
+      row.correo_sustanciador,
+      row.celular_sustanciador
+    ].filter(Boolean).join('\n')
+    return {
+      id: row.id,
+      etiqueta,
+      nombre: etiqueta,
+      celular: row.celular || '',
+      correo: row.correo_institucional || '',
+      notificacion: notif,
+      extra: {
+        procurador: row.procurador || '',
+        procuraduria: row.procuraduria || ''
+      }
+    }
+  }
+  if (tabla === 'directorio_victimas') {
+    const extra = extraerCelularCorreo(row.notificacion)
+    return {
+      id: row.id,
+      etiqueta: row.victima || '',
+      nombre: row.victima || '',
+      celular: extra.celular,
+      correo: extra.correo,
+      notificacion: row.notificacion || '',
+      extra: {}
+    }
+  }
+  if (tabla === 'inpec') {
+    const etiqueta = [row.ciudad, row.oficina, row.nombre_del_resposable].filter(Boolean).join(' — ')
+    const notif = [
+      row.direccion,
+      row.telefono,
+      row.correo_electronico_virtuales,
+      row.oficina,
+      row.ciudad
+    ].filter(Boolean).join('\n')
+    return {
+      id: row.id,
+      etiqueta,
+      nombre: etiqueta,
+      celular: row.telefono || '',
+      correo: row.correo_electronico_virtuales || '',
+      notificacion: notif,
+      extra: { ciudad: row.ciudad || '', oficina: row.oficina || '' }
+    }
+  }
+  if (tabla === 'rama_judicial') {
+    const etiqueta = [row.nombre, row.lugar].filter(Boolean).join(' — ')
+    const notif = [row.direccion, row.telefono, row.fax, row.correo_electronico].filter(Boolean).join('\n')
+    return {
+      id: row.id,
+      etiqueta,
+      nombre: etiqueta,
+      celular: row.telefono || '',
+      correo: row.correo_electronico || '',
+      notificacion: notif,
+      extra: { lugar: row.lugar || '' }
+    }
+  }
+  return null
+}
+
+app.get('/api/directorios', requireAuth, (req, res) => {
+  const mapa = {
+    fiscales: 'fiscales',
+    defensores: 'defensores',
+    procuradores: 'procuradores',
+    victimas: 'directorio_victimas',
+    inpec: 'inpec',
+    rama_judicial: 'rama_judicial'
+  }
+  const out = {}
+  for (const [clave, tabla] of Object.entries(mapa)) {
+    const rows = db.prepare(`SELECT * FROM ${tabla}`).all()
+    out[clave] = rows.map((r) => filaNotificacion(tabla, r)).filter(Boolean)
+  }
+  res.json(out)
+})
+
 app.get('/api/tabla/:tabla', requireAuth, (req, res) => {
   const tabla = req.params.tabla
   if (!validarTabla(tabla)) return res.status(404).json({ error: 'Módulo no encontrado.' })
