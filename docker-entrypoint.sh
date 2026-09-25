@@ -18,11 +18,6 @@ if [ ! -f /app/data/calendario_seed.json ] && [ -f /app/seed/calendario_seed.jso
   cp /app/seed/calendario_seed.json /app/data/calendario_seed.json
 fi
 
-# Nunca sobrescribir una base existente (ni si solo queda el WAL).
-if [ ! -f /app/data/juzgado.db ] && [ ! -f /app/data/juzgado.db-wal ] && [ -f /app/seed/juzgado.db ]; then
-  cp /app/seed/juzgado.db /app/data/juzgado.db
-fi
-
 if [ -d /app/seed/plantillas ]; then
   for f in /app/seed/plantillas/*; do
     [ -f "$f" ] || continue

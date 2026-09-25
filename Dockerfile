@@ -15,7 +15,6 @@ COPY public ./public
 COPY scripts ./scripts
 COPY docker-entrypoint.sh ./
 COPY data/esquema.json data/calendario_seed.json data/esquema.sql ./seed/
-COPY data/juzgado.db ./seed/juzgado.db
 COPY data/plantillas ./seed/plantillas
 
 RUN chmod +x docker-entrypoint.sh \
