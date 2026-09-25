@@ -10,3 +10,6 @@ data/vault/
 .DS_Store
 Thumbs.db
 *.log
+data/*.db
+data/confirmacion-guardado.txt
+data/reporte-pruebas.txt
