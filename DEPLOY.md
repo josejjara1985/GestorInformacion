@@ -43,10 +43,13 @@ Cree antes el repositorio vacio `GestorInformacion` en GitHub (sin README). Aute
 
 Si `better-sqlite3` falla al compilar, cambie Runtime a Docker (Dockerfile en la raiz). El `Dockerfile` instala python3/make/g++ y copia `juzgado.db` y plantillas.
 
-Disco persistente (recomendado para no perder SQLite al redeploy):
+Disco persistente (obligatorio para no perder SQLite al redeploy):
 
 - Mount path: `/opt/render/project/src/data`
-- Size: 1 GB o mas
+- Size: 2 GB o mas
+- Variable `DATA_DIR` = `/opt/render/project/src/data`
+
+Sin disco persistente, Render borra `juzgado.db` en cada redeploy o reinicio del plan Free.
 
 Comprobacion: `curl -sS -o /dev/null -w '%{http_code}\n' https://<servicio>.onrender.com/` debe imprimir `200`.
 
@@ -66,10 +69,13 @@ El plan Free se duerme sin trafico; el primer acceso puede tardar.
     - No defina `PORT`
 6. Settings — Networking — Generate Domain.
 
-Volumen persistente:
+Volumen persistente (obligatorio):
 
 - New — Volume
-- Mount: `/app/data` con Dockerfile, o `data` con Nixpacks.
+- Mount: `/app/data` con Dockerfile, o `/opt/render`/`data` con Nixpacks.
+- Variable `DATA_DIR` = ruta del volumen.
+
+Sin volumen, Railway borra SQLite en cada redeploy.
 
 ## 4. Docker en VPS
 

@@ -1422,11 +1422,13 @@ async function guardarRegistro(e) {
   }
   try {
     if (id) {
-      await api(`/api/tabla/${state.modulo}/${id}`, { method: 'PUT', body: JSON.stringify(body) })
-      mostrarToast('Registro actualizado correctamente.', 'success')
+      const r = await api(`/api/tabla/${state.modulo}/${id}`, { method: 'PUT', body: JSON.stringify(body) })
+      if (!r || !r.persistido) throw new Error('El servidor no confirmó que el registro quedó almacenado.')
+      mostrarToast('Registro actualizado y almacenado.', 'success')
     } else {
-      await api(`/api/tabla/${state.modulo}`, { method: 'POST', body: JSON.stringify(body) })
-      mostrarToast('Registro creado correctamente.', 'success')
+      const r = await api(`/api/tabla/${state.modulo}`, { method: 'POST', body: JSON.stringify(body) })
+      if (!r || !r.persistido || !r.id) throw new Error('El servidor no confirmó que el registro quedó almacenado.')
+      mostrarToast('Registro creado y almacenado.', 'success')
     }
     for (const n of nuevasOpciones) {
       try {
@@ -2320,9 +2322,11 @@ async function guardarAgenda(e) {
     alerta: $('#agAlerta').checked ? 1 : 0
   }
   try {
-    if (id) await api('/api/calendario/' + id, { method: 'PUT', body: JSON.stringify(body) })
-    else await api('/api/calendario', { method: 'POST', body: JSON.stringify(body) })
-    mostrarToast('Agenda actualizada.', 'success')
+    const r = id
+      ? await api('/api/calendario/' + id, { method: 'PUT', body: JSON.stringify(body) })
+      : await api('/api/calendario', { method: 'POST', body: JSON.stringify(body) })
+    if (!r || !r.persistido) throw new Error('El servidor no confirmó que la agenda quedó almacenada.')
+    mostrarToast('Agenda guardada y almacenada.', 'success')
     cerrarModal('modalAgenda')
     state.calDia = body.fecha
     await cargarCalendario()
@@ -2402,8 +2406,9 @@ async function guardarUsuario(e) {
   }
   try {
     if (id) {
-      await api('/api/usuarios/' + id, { method: 'PUT', body: JSON.stringify(body) })
-      mostrarToast('Usuario actualizado correctamente.', 'success')
+      const r = await api('/api/usuarios/' + id, { method: 'PUT', body: JSON.stringify(body) })
+      if (!r || !r.persistido) throw new Error('El servidor no confirmó que el usuario quedó almacenado.')
+      mostrarToast('Usuario actualizado y almacenado.', 'success')
     } else {
       const username = $('#uUsername').value.trim()
       const password = $('#uPassword').value
@@ -2411,8 +2416,9 @@ async function guardarUsuario(e) {
       if (!password) return mostrarToast('Debe indicar la contraseña para el nuevo usuario.', 'error')
       const chequeo = validarClaveSegura(password, { username, nombre: $('#uNombre').value })
       if (!chequeo.ok) return mostrarToast(chequeo.errores[0], 'error')
-      await api('/api/usuarios', { method: 'POST', body: JSON.stringify({ ...body, username, password }) })
-      mostrarToast('Usuario creado correctamente.', 'success')
+      const r = await api('/api/usuarios', { method: 'POST', body: JSON.stringify({ ...body, username, password }) })
+      if (!r || !r.persistido) throw new Error('El servidor no confirmó que el usuario quedó almacenado.')
+      mostrarToast('Usuario creado y almacenado.', 'success')
     }
     cerrarModal('modalUsuario')
     cargarUsuarios()

@@ -5,7 +5,7 @@ const path = require('path')
 const express = require('express')
 const session = require('express-session')
 const bcrypt = require('bcryptjs')
-const { openDb, getEsquema, loadEsquema, saveEsquema, columnasDe, tablasValidas, rowToObj, DB_PATH } = require('./lib/db')
+const { openDb, closeDb, persistir, getEsquema, loadEsquema, saveEsquema, columnasDe, tablasValidas, rowToObj, DB_PATH } = require('./lib/db')
 const { parseFecha, hoyISO, addDays } = require('./lib/dates')
 const { reporteCompleto, reporteEstadistica, csvDeCompleto, csvDeEstadistica, csvDeTabla } = require('./lib/reportes')
 const { extraerFiltros, filtrarRegistros, columnasFecha, campoFechaEfectivo, normalizarRango } = require('./lib/busqueda')
@@ -32,7 +32,7 @@ const exportadores = require('./lib/exportadores')
 
 const PORT = Number(process.env.PORT || 3000)
 const app = express()
-const db = openDb()
+let db = openDb()
 auditoria.init(db)
 backups.asegurarDirectorios()
 
@@ -46,7 +46,15 @@ function invalidarCaches() {
   estadisticaCache.clear()
   inicioCache = null
   inicioCacheAt = 0
-  try { db.pragma('wal_checkpoint(PASSIVE)') } catch (e) { /* checkpoint best-effort */ }
+}
+
+function persistirAhora() {
+  try {
+    return persistir(db)
+  } catch (e) {
+    try { db.pragma('wal_checkpoint(FULL)') } catch (_e) { /* se reintenta al cerrar */ }
+    return { ok: false, error: e.message }
+  }
 }
 
 function claveEstadistica(q) {
@@ -122,7 +130,17 @@ function opcionesOficio(query) {
 }
 
 app.get('/api/health', (_req, res) => {
-  res.json({ ok: true, nombre: 'GESTOR DE INFORMACIÓN JUZGADO PRIMERO PENAL DEL CIRCUITO ESPECIALIZADO DE TUMACO' })
+  try {
+    const n = db.prepare('SELECT COUNT(*) AS c FROM usuarios').get().c
+    res.json({
+      ok: true,
+      nombre: 'GESTOR DE INFORMACIÓN JUZGADO PRIMERO PENAL DEL CIRCUITO ESPECIALIZADO DE TUMACO',
+      db: path.basename(DB_PATH),
+      usuarios: n
+    })
+  } catch (e) {
+    res.status(500).json({ ok: false, error: 'Base de datos no disponible.' })
+  }
 })
 
 app.post('/api/login', (req, res) => {
@@ -234,7 +252,8 @@ app.put('/api/me/password', requireAuth, (req, res) => {
     descripcion: `El usuario "${u.username}" cambió su propia contraseña.`
   })
   res.locals.auditado = true
-  res.json({ ok: true })
+  persistirAhora()
+  res.json({ ok: true, persistido: true })
 })
 
 app.get('/api/tablas', requireAuth, (_req, res) => {
@@ -422,9 +441,14 @@ app.post('/api/tabla/:tabla', requireAuth, requireRol('administrador', 'usuario'
   const used = cols.filter((c) => body[c] != null)
   const sql = `INSERT INTO ${tabla} (${used.join(',')}) VALUES (${used.map(() => '?').join(',')})`
   const info = db.prepare(sql).run(...used.map((c) => body[c]))
+  const id = Number(info.lastInsertRowid)
+  const guardado = db.prepare(`SELECT id FROM ${tabla} WHERE id = ?`).get(id)
+  if (!guardado) return res.status(500).json({ error: 'El registro no quedó almacenado.' })
+  persistirAhora()
   invalidarCaches()
-  try { db.pragma('wal_checkpoint(FULL)') } catch (e) { /* persistencia */ }
-  res.json({ id: info.lastInsertRowid })
+  const confirmado = db.prepare(`SELECT id FROM ${tabla} WHERE id = ?`).get(id)
+  if (!confirmado) return res.status(500).json({ error: 'El registro no quedó almacenado.' })
+  res.json({ ok: true, id, persistido: true })
 })
 
 app.put('/api/tabla/:tabla/:id', requireAuth, requireRol('administrador', 'usuario'), (req, res) => {
@@ -435,18 +459,26 @@ app.put('/api/tabla/:tabla/:id', requireAuth, requireRol('administrador', 'usuar
   const used = cols.filter((c) => Object.prototype.hasOwnProperty.call(body, c))
   if (!used.length) return res.status(400).json({ error: 'Sin campos para actualizar.' })
   const sql = `UPDATE ${tabla} SET ${used.map((c) => c + ' = ?').join(', ')} WHERE id = ?`
-  db.prepare(sql).run(...used.map((c) => body[c]), Number(req.params.id))
+  const id = Number(req.params.id)
+  const info = db.prepare(sql).run(...used.map((c) => body[c]), id)
+  if (!info.changes) {
+    const existe = db.prepare(`SELECT id FROM ${tabla} WHERE id = ?`).get(id)
+    if (!existe) return res.status(404).json({ error: 'Registro no encontrado.' })
+  }
+  persistirAhora()
   invalidarCaches()
-  try { db.pragma('wal_checkpoint(FULL)') } catch (e) { /* persistencia */ }
-  res.json({ ok: true })
+  const confirmado = db.prepare(`SELECT id FROM ${tabla} WHERE id = ?`).get(id)
+  if (!confirmado) return res.status(404).json({ error: 'Registro no encontrado.' })
+  res.json({ ok: true, persistido: true })
 })
 
 app.delete('/api/tabla/:tabla/:id', requireAuth, requireRol('administrador'), (req, res) => {
   const tabla = req.params.tabla
   if (!validarTabla(tabla)) return res.status(404).json({ error: 'Módulo no encontrado.' })
   db.prepare(`DELETE FROM ${tabla} WHERE id = ?`).run(Number(req.params.id))
+  persistirAhora()
   invalidarCaches()
-  res.json({ ok: true })
+  res.json({ ok: true, persistido: true })
 })
 
 app.get('/api/reportes/:tabla', requireAuth, (req, res) => {
@@ -893,8 +925,11 @@ app.post('/api/calendario', requireAuth, requireRol('administrador', 'usuario'),
     b.responsable || '', b.modulo || '', b.registro_id || null, b.estado || 'programada',
     b.notas || '', b.alerta === 0 ? 0 : 1
   )
+  persistirAhora()
   invalidarCaches()
-  res.json({ id: info.lastInsertRowid })
+  const confirmado = db.prepare(`SELECT id FROM ${tabla} WHERE id = ?`).get(id)
+  if (!confirmado) return res.status(404).json({ error: 'Registro no encontrado.' })
+  res.json({ ok: true, persistido: true })
 })
 
 app.put('/api/calendario/:id', requireAuth, requireRol('administrador', 'usuario'), (req, res) => {
@@ -904,14 +939,16 @@ app.put('/api/calendario/:id', requireAuth, requireRol('administrador', 'usuario
   if (!used.length) return res.status(400).json({ error: 'Sin campos.' })
   db.prepare(`UPDATE calendario SET ${used.map((c) => c + ' = ?').join(', ')} WHERE id = ?`)
     .run(...used.map((c) => b[c]), Number(req.params.id))
+  persistirAhora()
   invalidarCaches()
-  res.json({ ok: true })
+  res.json({ ok: true, persistido: true })
 })
 
 app.delete('/api/calendario/:id', requireAuth, requireRol('administrador', 'usuario'), (req, res) => {
   db.prepare('DELETE FROM calendario WHERE id = ?').run(Number(req.params.id))
+  persistirAhora()
   invalidarCaches()
-  res.json({ ok: true })
+  res.json({ ok: true, persistido: true })
 })
 
 app.get('/api/alertas', requireAuth, (req, res) => {
@@ -982,9 +1019,10 @@ app.post('/api/usuarios', requireAuth, requireRol('administrador'), (req, res) =
       despues: { username: String(b.username).trim(), rol: b.rol || 'consulta', activo: b.activo === false ? 0 : 1 }
     })
     res.locals.auditado = true
-    try { db.pragma('wal_checkpoint(FULL)') } catch (e) { /* persistencia */ }
-    res.json({ id: info.lastInsertRowid })
+    persistirAhora()
+    res.json({ ok: true, id: Number(info.lastInsertRowid), persistido: true })
   } catch (e) {
+    if (e.code === 'PERSISTENCIA') return res.status(500).json({ error: e.message })
     res.status(400).json({ error: 'El usuario ya existe.' })
   }
 })
@@ -1010,8 +1048,8 @@ app.put('/api/usuarios/:id', requireAuth, requireRol('administrador'), (req, res
     despues
   })
   res.locals.auditado = true
-  try { db.pragma('wal_checkpoint(FULL)') } catch (e) { /* persistencia */ }
-  res.json({ ok: true })
+  persistirAhora()
+  res.json({ ok: true, persistido: true })
 })
 
 app.put('/api/usuarios/:id/password', requireAuth, requireRol('administrador'), (req, res) => {
@@ -1033,7 +1071,8 @@ app.put('/api/usuarios/:id/password', requireAuth, requireRol('administrador'), 
     descripcion: `El administrador restableció la contraseña del usuario "${u.username}".`
   })
   res.locals.auditado = true
-  res.json({ ok: true })
+  persistirAhora()
+  res.json({ ok: true, persistido: true })
 })
 
 app.delete('/api/usuarios/:id', requireAuth, requireRol('administrador'), (req, res) => {
@@ -1050,7 +1089,8 @@ app.delete('/api/usuarios/:id', requireAuth, requireRol('administrador'), (req, 
     antes: u || null
   })
   res.locals.auditado = true
-  res.json({ ok: true })
+  persistirAhora()
+  res.json({ ok: true, persistido: true })
 })
 
 app.get('/api/backup', requireAuth, requireRol('administrador'), async (req, res) => {
@@ -1082,18 +1122,54 @@ app.post('/api/restore', requireAuth, requireRol('administrador'), (req, res) =>
   if (buf.slice(0, 15).toString() !== 'SQLite format 3') {
     return res.status(400).json({ error: 'El archivo no es una base SQLite válida.' })
   }
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
+  const cuarentena = path.join(path.dirname(DB_PATH), 'cuarentena-' + stamp)
+  const temporal = path.join(path.dirname(DB_PATH), 'backups-tmp', 'restore-live-' + Date.now() + '.db')
   try {
-    fs.writeFileSync(DB_PATH, buf)
-  } catch (_e) { /* ignore */ }
+    fs.mkdirSync(cuarentena, { recursive: true })
+    fs.mkdirSync(path.dirname(temporal), { recursive: true })
+    persistirAhora()
+    for (const n of ['juzgado.db', 'juzgado.db-wal', 'juzgado.db-shm']) {
+      const src = path.join(path.dirname(DB_PATH), n)
+      if (fs.existsSync(src)) fs.copyFileSync(src, path.join(cuarentena, n))
+    }
+    fs.writeFileSync(temporal, buf)
+    const Database = require('better-sqlite3')
+    const tmpDb = new Database(temporal, { readonly: true, fileMustExist: true })
+    let integridad
+    try {
+      integridad = tmpDb.prepare('PRAGMA integrity_check').get()
+    } finally {
+      tmpDb.close()
+    }
+    const valor = integridad ? Object.values(integridad)[0] : 'desconocido'
+    if (valor !== 'ok') {
+      return res.status(400).json({ error: 'La copia no pasa integrity_check: ' + valor })
+    }
+    closeDb()
+    fs.copyFileSync(temporal, DB_PATH)
+    for (const n of ['juzgado.db-wal', 'juzgado.db-shm']) {
+      const extra = path.join(path.dirname(DB_PATH), n)
+      try { if (fs.existsSync(extra)) fs.unlinkSync(extra) } catch (_e) { /* ignore */ }
+    }
+    db = openDb()
+    auditoria.init(db)
+  } catch (e) {
+    try { db = openDb(); auditoria.init(db) } catch (_e) { /* ignore */ }
+    return res.status(500).json({ error: 'No se pudo restaurar: ' + e.message })
+  } finally {
+    try { if (fs.existsSync(temporal)) fs.unlinkSync(temporal) } catch (_e) { /* ignore */ }
+  }
   auditoria.registrar({
     req,
     accion: 'restaurar_backup',
     modulo: 'backups',
     descripcion: 'Se restauró la base de datos desde un archivo cargado.',
-    despues: { tamano: buf.length }
+    despues: { tamano: buf.length, cuarentena }
   })
   res.locals.auditado = true
-  res.json({ ok: true, advertencia: 'Reinicie el servicio para que la restauración surta efecto.' })
+  persistirAhora()
+  res.json({ ok: true, persistido: true, advertencia: 'Restauración aplicada. La base anterior quedó en ' + cuarentena + '.' })
 })
 
 /* ------------------------------ Auditoría ------------------------------ */
@@ -1536,7 +1612,8 @@ app.put('/api/esquema/:tabla', requireAuth, requireRol('administrador'), (req, r
     for (const c of esquema[tabla].columnas) c.visible = set.has(c.nombre)
   }
   saveEsquema()
-  res.json({ ok: true })
+  persistirAhora()
+  res.json({ ok: true, persistido: true })
 })
 
 app.delete('/api/esquema/:tabla', requireAuth, requireRol('administrador'), (req, res) => {
@@ -1548,7 +1625,8 @@ app.delete('/api/esquema/:tabla', requireAuth, requireRol('administrador'), (req
   db.exec(`DROP TABLE IF EXISTS ${tabla}`)
   delete esquema[tabla]
   saveEsquema()
-  res.json({ ok: true })
+  persistirAhora()
+  res.json({ ok: true, persistido: true })
 })
 
 app.post('/api/esquema/:tabla/columnas', requireAuth, requireRol('administrador'), (req, res) => {
@@ -1572,7 +1650,8 @@ app.post('/api/esquema/:tabla/columnas', requireAuth, requireRol('administrador'
   })
   if (b.visible) esquema[tabla].visibles.push(nombre)
   saveEsquema()
-  res.json({ ok: true, nombre })
+  persistirAhora()
+  res.json({ ok: true, nombre, persistido: true })
 })
 
 app.put('/api/esquema/:tabla/columnas/:nombre', requireAuth, requireRol('administrador'), (req, res) => {
@@ -1595,7 +1674,8 @@ app.put('/api/esquema/:tabla/columnas/:nombre', requireAuth, requireRol('adminis
     c.nombre = nuevo
   }
   saveEsquema()
-  res.json({ ok: true })
+  persistirAhora()
+  res.json({ ok: true, persistido: true })
 })
 
 app.delete('/api/esquema/:tabla/columnas/:nombre', requireAuth, requireRol('administrador'), (req, res) => {
@@ -1605,7 +1685,8 @@ app.delete('/api/esquema/:tabla/columnas/:nombre', requireAuth, requireRol('admi
   esquema[tabla].columnas = esquema[tabla].columnas.filter((c) => c.nombre !== req.params.nombre)
   esquema[tabla].visibles = esquema[tabla].visibles.filter((n) => n !== req.params.nombre)
   saveEsquema()
-  res.json({ ok: true })
+  persistirAhora()
+  res.json({ ok: true, persistido: true })
 })
 
 app.post('/api/esquema/:tabla/columnas/:nombre/opciones', requireAuth, requireRol('administrador', 'usuario'), (req, res) => {
@@ -1619,7 +1700,8 @@ app.post('/api/esquema/:tabla/columnas/:nombre/opciones', requireAuth, requireRo
   if (!c.opciones) c.opciones = []
   if (!c.opciones.includes(valor)) c.opciones.push(valor)
   saveEsquema()
-  res.json({ ok: true })
+  persistirAhora()
+  res.json({ ok: true, persistido: true })
 })
 
 app.get('*', (req, res, next) => {
@@ -1627,15 +1709,36 @@ app.get('*', (req, res, next) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'))
 })
 
+app.use((err, _req, res, next) => {
+  if (res.headersSent) return next(err)
+  const codigo = err.code === 'PERSISTENCIA' ? 500 : 500
+  res.status(codigo).json({ error: err.message || 'Error interno.' })
+})
+
 if (require.main === module) {
   const server = app.listen(PORT, '0.0.0.0', () => {
     console.log('Gestor de Información escuchando en puerto ' + PORT)
+    console.log('Base de datos:', DB_PATH)
     programador.iniciar(process.env.PUBLIC_URL || '')
   })
   server.on('error', (err) => {
     console.error(err)
     process.exit(1)
   })
+  function apagar() {
+    try { programador.detener() } catch (_e) { /* ignore */ }
+    try { persistir(db) } catch (_e) { /* ignore */ }
+    server.close(() => {
+      try { closeDb() } catch (_e) { /* ignore */ }
+      process.exit(0)
+    })
+    setTimeout(() => {
+      try { closeDb() } catch (_e) { /* ignore */ }
+      process.exit(0)
+    }, 4000).unref()
+  }
+  process.on('SIGTERM', apagar)
+  process.on('SIGINT', apagar)
 }
 
 module.exports = app

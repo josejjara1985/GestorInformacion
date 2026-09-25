@@ -19,8 +19,7 @@ COPY data/juzgado.db ./seed/juzgado.db
 COPY data/plantillas ./seed/plantillas
 
 RUN chmod +x docker-entrypoint.sh \
-  && mkdir -p data/plantillas data/backups data/backups-redundante data/backups-tmp data/outbox data/vault \
-  && cp -a seed/. data/
+  && mkdir -p data/plantillas data/backups data/backups-redundante data/backups-tmp data/outbox data/vault
 
 ENV NODE_ENV=production
 ENV TZ=America/Bogota
