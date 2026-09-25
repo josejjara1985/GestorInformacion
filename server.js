@@ -2,10 +2,11 @@
 
 const fs = require('fs')
 const path = require('path')
+try { require('dotenv').config({ path: path.join(__dirname, '.env') }) } catch (_e) { /* dotenv opcional */ }
 const express = require('express')
 const session = require('express-session')
 const bcrypt = require('bcryptjs')
-const { openDb, closeDb, persistir, getEsquema, loadEsquema, saveEsquema, columnasDe, tablasValidas, rowToObj, DB_PATH } = require('./lib/db')
+const { openDb, closeDb, persistir, registrarConfirmacion, getEsquema, loadEsquema, saveEsquema, columnasDe, tablasValidas, rowToObj, DB_PATH } = require('./lib/db')
 const { parseFecha, hoyISO, addDays } = require('./lib/dates')
 const { reporteCompleto, reporteEstadistica, csvDeCompleto, csvDeEstadistica, csvDeTabla } = require('./lib/reportes')
 const { extraerFiltros, filtrarRegistros, columnasFecha, campoFechaEfectivo, normalizarRango } = require('./lib/busqueda')
@@ -49,12 +50,20 @@ function invalidarCaches() {
 }
 
 function persistirAhora() {
+  let r
   try {
-    return persistir(db)
+    r = persistir(db)
   } catch (e) {
-    try { db.pragma('wal_checkpoint(FULL)') } catch (_e) { /* se reintenta al cerrar */ }
-    return { ok: false, error: e.message }
+    const err = new Error('No se confirmó la escritura en disco: ' + e.message)
+    err.code = 'PERSISTENCIA'
+    throw err
   }
+  if (!r || r.ok === false) {
+    const err = new Error('No se confirmó la escritura en disco: ' + ((r && r.error) || 'fsync/checkpoint falló'))
+    err.code = 'PERSISTENCIA'
+    throw err
+  }
+  return r
 }
 
 function claveEstadistica(q) {
@@ -444,11 +453,12 @@ app.post('/api/tabla/:tabla', requireAuth, requireRol('administrador', 'usuario'
   const id = Number(info.lastInsertRowid)
   const guardado = db.prepare(`SELECT id FROM ${tabla} WHERE id = ?`).get(id)
   if (!guardado) return res.status(500).json({ error: 'El registro no quedó almacenado.' })
-  persistirAhora()
+  const disco = persistirAhora()
   invalidarCaches()
   const confirmado = db.prepare(`SELECT id FROM ${tabla} WHERE id = ?`).get(id)
   if (!confirmado) return res.status(500).json({ error: 'El registro no quedó almacenado.' })
-  res.json({ ok: true, id, persistido: true })
+  registrarConfirmacion('POST ' + tabla + ' id=' + id)
+  res.json({ ok: true, id, persistido: true, ruta: disco.ruta, archivo: disco.archivo })
 })
 
 app.put('/api/tabla/:tabla/:id', requireAuth, requireRol('administrador', 'usuario'), (req, res) => {
@@ -465,11 +475,12 @@ app.put('/api/tabla/:tabla/:id', requireAuth, requireRol('administrador', 'usuar
     const existe = db.prepare(`SELECT id FROM ${tabla} WHERE id = ?`).get(id)
     if (!existe) return res.status(404).json({ error: 'Registro no encontrado.' })
   }
-  persistirAhora()
+  const disco = persistirAhora()
   invalidarCaches()
   const confirmado = db.prepare(`SELECT id FROM ${tabla} WHERE id = ?`).get(id)
   if (!confirmado) return res.status(404).json({ error: 'Registro no encontrado.' })
-  res.json({ ok: true, persistido: true })
+  registrarConfirmacion('PUT ' + tabla + ' id=' + id)
+  res.json({ ok: true, persistido: true, ruta: disco.ruta, archivo: disco.archivo })
 })
 
 app.delete('/api/tabla/:tabla/:id', requireAuth, requireRol('administrador'), (req, res) => {
@@ -925,11 +936,11 @@ app.post('/api/calendario', requireAuth, requireRol('administrador', 'usuario'),
     b.responsable || '', b.modulo || '', b.registro_id || null, b.estado || 'programada',
     b.notas || '', b.alerta === 0 ? 0 : 1
   )
-  persistirAhora()
+    persistirAhora()
   invalidarCaches()
-  const confirmado = db.prepare(`SELECT id FROM ${tabla} WHERE id = ?`).get(id)
-  if (!confirmado) return res.status(404).json({ error: 'Registro no encontrado.' })
-  res.json({ ok: true, persistido: true })
+  const confirmado = db.prepare('SELECT id FROM calendario WHERE id = ?').get(Number(info.lastInsertRowid))
+  if (!confirmado) return res.status(404).json({ error: 'El evento no quedó almacenado.' })
+  res.json({ ok: true, id: Number(info.lastInsertRowid), persistido: true })
 })
 
 app.put('/api/calendario/:id', requireAuth, requireRol('administrador', 'usuario'), (req, res) => {
