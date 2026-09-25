@@ -24,7 +24,8 @@ const state = {
   audPaginas: 1,
   audRegistros: {},
   bdConfig: null,
-  directorios: null
+  directorios: null,
+  etapaHistorial: []
 }
 
 const $ = (sel) => document.querySelector(sel)
@@ -402,7 +403,6 @@ function entrarApp() {
   $('#usuarioNombre').textContent = state.usuario.nombre
   const cargoEl = $('#usuarioCargo')
   if (cargoEl) cargoEl.textContent = state.usuario.cargo || ''
-  $('#usuarioRol').textContent = rolLabel(state.usuario.rol)
   ocultarRol()
   pintarIconos()
   aplicarTitulosNav()
@@ -1003,6 +1003,7 @@ async function abrirRegistro(id) {
   $('#modalRegistroTitulo').textContent = id ? `Editar — ${conf.titulo}` : `Nuevo — ${conf.titulo}`
   $('#formRegistro').reset()
   $('#regId').value = id || ''
+  state.etapaHistorial = []
   if (state.modulo === 'procesos') await cargarDirectorios()
 
   const camposVisibles = conf.columnas.filter((c) => !c.no_formulario)
@@ -1059,21 +1060,32 @@ async function abrirRegistro(id) {
           <thead><tr><th>Nombre</th><th>C.C.</th><th>Sexo</th><th>Detenido</th><th>Cárcel</th><th>Dirección - Correo</th><th>Celular</th><th></th></tr></thead>
           <tbody id="procesados_filas_${state.modulo}"></tbody></table></div>
           <button type="button" class="btn btn-outline btn-sm" onclick="agregarFilaProcesado('${state.modulo}')">Agregar procesado</button>`
+      } else if (tipo === 'resuelve') {
+        control = `<div class="tabla-scroll"><table class="tabla tabla-filas-extra">
+          <thead><tr><th>Resuelve</th><th></th></tr></thead>
+          <tbody id="resuelve_filas_${state.modulo}"></tbody></table></div>
+          <button type="button" class="btn btn-outline btn-sm" onclick="agregarFilaResuelve('${state.modulo}')">Agregar resuelve</button>`
+      } else if (tipo === 'ejecutoria') {
+        control = `<div class="tabla-scroll"><table class="tabla tabla-filas-extra">
+          <thead><tr><th>Procesado</th><th>Tipo boleta</th><th>Número</th><th></th></tr></thead>
+          <tbody id="ejecutoria_filas_${state.modulo}"></tbody></table></div>
+          <button type="button" class="btn btn-outline btn-sm" onclick="agregarFilaEjecutoria('${state.modulo}')">Agregar ejecutoria</button>`
       } else if (tipo === 'fecha') {
         control = `<input type="date" id="${id}" class="input" />`
       } else if (tipo === 'numerico') {
-        control = `<input type="number" step="any" id="${id}" class="input" />`
+        control = `<input type="number" step="any" id="${id}" class="input campo-compacto" />`
       } else if (tipo === 'seleccion' || LOOKUP_CAMPOS[c.nombre]) {
         const list = `dl_${state.modulo}_${c.nombre}`
         const ops = LOOKUP_CAMPOS[c.nombre] ? opcionesLookup(c.nombre) : (c.opciones || [])
         const opciones = ops.map((o) => `<option value="${esc(o)}"></option>`).join('')
-        control = `<input type="text" id="${id}" class="input" list="${list}" autocomplete="off" placeholder="Busque o escriba una opción nueva" /><datalist id="${list}">${opciones}</datalist>`
+        control = `<input type="text" id="${id}" class="input${ancho ? '' : ' campo-compacto'}" list="${list}" autocomplete="off" placeholder="Busque o escriba una opción nueva" /><datalist id="${list}">${opciones}</datalist>`
       } else if (largo || (/observ|informe|descripcion|anotacion/.test(c.nombre) && c.nombre.length > 12)) {
         control = `<textarea id="${id}" class="input" rows="${largo ? 3 : 2}"></textarea>`
       } else {
-        control = `<input type="text" id="${id}" class="input" />`
+        control = `<input type="text" id="${id}" class="input${ancho ? '' : ' campo-compacto'}" />`
       }
-      return `<div class="campo${ancho ? ' campo-ancho' : ''}">
+      const compacto = !ancho && (tipo === 'numerico' || tipo === 'fecha' || ['no','radicado','no_acta_reparto','codigo_interno','caja','no_carpetas','no_folios','no_cd','hora','no_orden_verbal','cedula_defensor','tarjeta_defensor','no_carpetas_2','no_folios_2','no_cd_2','n_numero_oficio','no_oficio','pena_cumplida','n_numero_sentencia_o_auto','pena_meses','sancion_multa_smlv','pago_perjuicios_victima'].includes(c.nombre))
+      return `<div class="campo${ancho ? ' campo-ancho' : ''}${compacto ? ' campo-corto' : ''}">
         <label for="${id}" title="${esc(c.nombre)}">${esc(etiqueta)}${sufijo}</label>
         ${control}
       </div>`
@@ -1085,20 +1097,27 @@ async function abrirRegistro(id) {
 
   for (const c of camposVisibles) {
     if (c.tipo === 'procesados') agregarFilaProcesado(state.modulo)
+    if (c.tipo === 'resuelve') agregarFilaResuelve(state.modulo)
+    if (c.tipo === 'ejecutoria') agregarFilaEjecutoria(state.modulo)
   }
 
   if (id) {
     try {
       const r = await api(`/api/tabla/${state.modulo}/${id}`)
       for (const c of camposVisibles) {
-        if (c.tipo === 'procesados') continue
+        if (c.tipo === 'procesados' || c.tipo === 'resuelve' || c.tipo === 'ejecutoria') continue
         const el = document.getElementById(`campo_${state.modulo}_${c.nombre}`)
         if (el) el.value = r[c.nombre] == null ? '' : String(r[c.nombre])
       }
       hidratarProcesados(r)
+      hidratarResuelve(r)
+      hidratarEjecutoria(r)
+      hidratarHistorialEtapa(r)
     } catch (err) {
       mostrarToast('No se pudieron cargar los datos del registro: ' + err.message, 'error')
     }
+  } else if (state.modulo === 'procesos') {
+    hidratarHistorialEtapa({})
   }
 
   engancharLookups()
@@ -1189,6 +1208,161 @@ function hidratarProcesados(r) {
   for (const f of filas) agregarFilaProcesado(state.modulo, f)
 }
 
+const RESULTADOS_ETAPA = [
+  'Realizada',
+  'Fracasada',
+  'Suspendida',
+  'Cancelada',
+  'Aplazada'
+]
+const MOTIVOS_ETAPA = [
+  'Defensor público',
+  'Defensor de confianza',
+  'Fiscalía',
+  'Conjunta',
+  'Fallas técnicas',
+  'Juez',
+  'Juez ajenas a él',
+  'Juzgado',
+  'Procesado',
+  'Otro'
+]
+const CAMPOS_ETAPA = [
+  ['fecha_acusacion', 'Acusación'],
+  ['fecha_preparatoria', 'Preparatoria'],
+  ['auto_de_pruebas', 'Auto de pruebas'],
+  ['fecha_juicio', 'Juicio oral'],
+  ['fecha_preacuerdo', 'Preacuerdo'],
+  ['fecha_preclusion', 'Preclusión'],
+  ['allanamiento', 'Allanamiento'],
+  ['fecha_individualizacion_447', '447'],
+  ['lectura_de_sentencia', 'Lectura de sentencia']
+]
+
+function parseJsonLista(raw) {
+  const t = String(raw || '').trim()
+  if (!t) return []
+  try {
+    const p = JSON.parse(t)
+    return Array.isArray(p) ? p : []
+  } catch (e) {
+    return []
+  }
+}
+
+function hidratarHistorialEtapa(r) {
+  const grupo = [...$$('#regCampos fieldset')].find((fs) => (fs.querySelector('legend') || {}).textContent === 'Etapa procesal')
+  if (!grupo) return
+  let box = document.getElementById('historial_etapa_box')
+  if (!box) {
+    box = document.createElement('div')
+    box.id = 'historial_etapa_box'
+    box.className = 'campo campo-ancho'
+    grupo.appendChild(box)
+  }
+  const filas = parseJsonLista(r.etapa_historial)
+  state.etapaHistorial = filas
+  const opsRes = RESULTADOS_ETAPA.map((o) => `<option value="${esc(o)}"></option>`).join('')
+  const opsMot = MOTIVOS_ETAPA.map((o) => `<option value="${esc(o)}"></option>`).join('')
+  box.innerHTML = `<label>OBSERVACIÓN DE AUDIENCIA (se graba con cada programación)</label>
+    <div class="fila-etapa-nueva">
+      <input type="date" id="etapaNuevaFecha" class="input campo-compacto" />
+      <input type="text" id="etapaNuevaResultado" class="input" list="dl_etapa_res" placeholder="Realizada / Fracasada / Suspendida..." autocomplete="off" />
+      <datalist id="dl_etapa_res">${opsRes}</datalist>
+      <input type="text" id="etapaNuevaMotivo" class="input" list="dl_etapa_mot" placeholder="Por el defensor, Fiscalía, fallas técnicas..." autocomplete="off" />
+      <datalist id="dl_etapa_mot">${opsMot}</datalist>
+      <input type="text" id="etapaNuevaNota" class="input" placeholder="Detalle (opcional)" />
+    </div>
+    <div class="historial-etapa">${filas.length ? filas.map((f) => `<div>${esc([f.fecha, f.resultado, f.motivo, f.nota].filter(Boolean).join(' — '))}</div>`).join('') : '<span class="ayuda-campo">Aún no hay historial de programaciones.</span>'}</div>`
+}
+
+function agregarFilaResuelve(modulo, datos) {
+  const tb = document.getElementById(`resuelve_filas_${modulo}`)
+  if (!tb) return
+  const f = datos || {}
+  tb.insertAdjacentHTML('beforeend', `<tr>
+    <td><input type="text" class="input celda-resuelve" value="${esc(f.texto || '')}" placeholder="Resuelve" /></td>
+    <td><button type="button" class="btn-link" onclick="this.closest('tr').remove()">Quitar</button></td>
+  </tr>`)
+}
+
+function leerResuelve(modulo) {
+  const tb = document.getElementById(`resuelve_filas_${modulo}`)
+  if (!tb) return []
+  return [...tb.querySelectorAll('tr')].map((tr) => ({
+    texto: (tr.querySelector('.celda-resuelve') || {}).value ? tr.querySelector('.celda-resuelve').value.trim() : ''
+  })).filter((f) => f.texto)
+}
+
+function hidratarResuelve(r) {
+  const tb = document.getElementById(`resuelve_filas_${state.modulo}`)
+  if (!tb) return
+  let filas = parseJsonLista(r.resuelve_detalle)
+  if (!filas.length) {
+    ;['confirma', 'modifica', 'revoca', 'a_otros_despachos_por_impedimentos_recusacion_competencia', 'otras_salidas'].forEach((k) => {
+      const v = String(r[k] || '').trim()
+      if (v) filas.push({ texto: v })
+    })
+  }
+  tb.innerHTML = ''
+  if (!filas.length) {
+    agregarFilaResuelve(state.modulo)
+    return
+  }
+  for (const f of filas) agregarFilaResuelve(state.modulo, f)
+}
+
+function agregarFilaEjecutoria(modulo, datos) {
+  const tb = document.getElementById(`ejecutoria_filas_${modulo}`)
+  if (!tb) return
+  const f = datos || {}
+  const procesados = leerProcesados(modulo).map((p) => p.nombre).filter(Boolean)
+  const opsProc = procesados.map((o) => `<option value="${esc(o)}"></option>`).join('')
+  const opsBol = ['Orden de captura', 'Boleta de encarcelamiento', 'Boleta domiciliaria', 'Boleta de libertad']
+    .map((o) => `<option value="${esc(o)}"></option>`).join('')
+  const uid = Math.random().toString(36).slice(2, 8)
+  tb.insertAdjacentHTML('beforeend', `<tr>
+    <td><input type="text" class="input eje-procesado" list="dl_eje_p_${uid}" value="${esc(f.procesado || '')}" placeholder="Seleccione procesado" autocomplete="off" /><datalist id="dl_eje_p_${uid}">${opsProc}</datalist></td>
+    <td><input type="text" class="input eje-tipo" list="dl_eje_b_${uid}" value="${esc(f.tipo || '')}" placeholder="Tipo boleta" autocomplete="off" /><datalist id="dl_eje_b_${uid}">${opsBol}</datalist></td>
+    <td><input type="text" class="input eje-numero campo-compacto" value="${esc(f.numero || '')}" placeholder="Número" /></td>
+    <td><button type="button" class="btn-link" onclick="this.closest('tr').remove()">Quitar</button></td>
+  </tr>`)
+}
+
+function leerEjecutoria(modulo) {
+  const tb = document.getElementById(`ejecutoria_filas_${modulo}`)
+  if (!tb) return []
+  return [...tb.querySelectorAll('tr')].map((tr) => ({
+    procesado: (tr.querySelector('.eje-procesado') || {}).value ? tr.querySelector('.eje-procesado').value.trim() : '',
+    tipo: (tr.querySelector('.eje-tipo') || {}).value ? tr.querySelector('.eje-tipo').value.trim() : '',
+    numero: (tr.querySelector('.eje-numero') || {}).value ? tr.querySelector('.eje-numero').value.trim() : ''
+  })).filter((f) => f.procesado || f.tipo || f.numero)
+}
+
+function hidratarEjecutoria(r) {
+  const tb = document.getElementById(`ejecutoria_filas_${state.modulo}`)
+  if (!tb) return
+  let filas = parseJsonLista(r.ejecutoria_detalle)
+  if (!filas.length) {
+    const mapa = [
+      ['no_orden_de_captura', 'Orden de captura'],
+      ['no_boleta_encarcela', 'Boleta de encarcelamiento'],
+      ['no_boleta_domiciliaria', 'Boleta domiciliaria'],
+      ['no_boleta_de_libertad', 'Boleta de libertad']
+    ]
+    mapa.forEach(([k, tipo]) => {
+      const v = String(r[k] || '').trim()
+      if (v) filas.push({ procesado: '', tipo, numero: v })
+    })
+  }
+  tb.innerHTML = ''
+  if (!filas.length) {
+    agregarFilaEjecutoria(state.modulo)
+    return
+  }
+  for (const f of filas) agregarFilaEjecutoria(state.modulo, f)
+}
+
 async function guardarRegistro(e) {
   e.preventDefault()
   const id = $('#regId').value
@@ -1213,6 +1387,16 @@ async function guardarRegistro(e) {
       if (nM) body.no_mujeres = String(nM)
       continue
     }
+    if (c.tipo === 'resuelve') {
+      const filas = leerResuelve(state.modulo)
+      body[c.nombre] = filas.length ? JSON.stringify(filas) : ''
+      continue
+    }
+    if (c.tipo === 'ejecutoria') {
+      const filas = leerEjecutoria(state.modulo)
+      body[c.nombre] = filas.length ? JSON.stringify(filas) : ''
+      continue
+    }
     const el = document.getElementById(`campo_${state.modulo}_${c.nombre}`)
     body[c.nombre] = el ? el.value : ''
     if (el && c.tipo === 'seleccion' && body[c.nombre]) {
@@ -1221,6 +1405,20 @@ async function guardarRegistro(e) {
         nuevasOpciones.push({ columna: c.nombre, valor: body[c.nombre].trim() })
       }
     }
+  }
+  if (state.modulo === 'procesos') {
+    if (!id && !String(body.delitos_en_concurso || '').trim() && String(body.delito_estadistica || '').trim()) {
+      body.delitos_en_concurso = body.delito_estadistica
+    }
+    const fechaN = (($('#etapaNuevaFecha') || {}).value || '').trim()
+    const resN = (($('#etapaNuevaResultado') || {}).value || '').trim()
+    const motN = (($('#etapaNuevaMotivo') || {}).value || '').trim()
+    const notaN = (($('#etapaNuevaNota') || {}).value || '').trim()
+    const hist = Array.isArray(state.etapaHistorial) ? state.etapaHistorial.slice() : []
+    if (fechaN || resN || motN || notaN) {
+      hist.push({ fecha: fechaN, resultado: resN, motivo: motN, nota: notaN })
+    }
+    body.etapa_historial = hist.length ? JSON.stringify(hist) : ''
   }
   try {
     if (id) {

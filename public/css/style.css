@@ -787,6 +787,12 @@ input[type="date"] { max-width: 100%; min-width: 0; }
 .tabla-procesados .proc-nombre { min-width: 220px; }
 .tabla-procesados .proc-direccion { min-width: 220px; }
 .tabla-procesados .proc-celular { min-width: 130px; }
+.campo-corto { max-width: 220px; }
+.campo-compacto { max-width: 180px; }
+.tabla-filas-extra { min-width: 520px; }
+.tabla-filas-extra th, .tabla-filas-extra td { padding: 6px; vertical-align: middle; }
+.fila-etapa-nueva { display: grid; grid-template-columns: 150px 1fr 1fr 1fr; gap: 8px; margin-bottom: 8px; }
+.historial-etapa { font-size: 12px; color: var(--texto-suave); line-height: 1.45; }
 
 /* ============ BOTONES ============ */
 .btn {

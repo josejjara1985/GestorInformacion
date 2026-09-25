@@ -46,6 +46,7 @@ function invalidarCaches() {
   estadisticaCache.clear()
   inicioCache = null
   inicioCacheAt = 0
+  try { db.pragma('wal_checkpoint(PASSIVE)') } catch (e) { /* checkpoint best-effort */ }
 }
 
 function claveEstadistica(q) {
@@ -422,6 +423,7 @@ app.post('/api/tabla/:tabla', requireAuth, requireRol('administrador', 'usuario'
   const sql = `INSERT INTO ${tabla} (${used.join(',')}) VALUES (${used.map(() => '?').join(',')})`
   const info = db.prepare(sql).run(...used.map((c) => body[c]))
   invalidarCaches()
+  try { db.pragma('wal_checkpoint(FULL)') } catch (e) { /* persistencia */ }
   res.json({ id: info.lastInsertRowid })
 })
 
@@ -435,6 +437,7 @@ app.put('/api/tabla/:tabla/:id', requireAuth, requireRol('administrador', 'usuar
   const sql = `UPDATE ${tabla} SET ${used.map((c) => c + ' = ?').join(', ')} WHERE id = ?`
   db.prepare(sql).run(...used.map((c) => body[c]), Number(req.params.id))
   invalidarCaches()
+  try { db.pragma('wal_checkpoint(FULL)') } catch (e) { /* persistencia */ }
   res.json({ ok: true })
 })
 
@@ -979,6 +982,7 @@ app.post('/api/usuarios', requireAuth, requireRol('administrador'), (req, res) =
       despues: { username: String(b.username).trim(), rol: b.rol || 'consulta', activo: b.activo === false ? 0 : 1 }
     })
     res.locals.auditado = true
+    try { db.pragma('wal_checkpoint(FULL)') } catch (e) { /* persistencia */ }
     res.json({ id: info.lastInsertRowid })
   } catch (e) {
     res.status(400).json({ error: 'El usuario ya existe.' })
@@ -990,8 +994,8 @@ app.put('/api/usuarios/:id', requireAuth, requireRol('administrador'), (req, res
   const id = Number(req.params.id)
   const antes = db.prepare('SELECT nombre_completo, rol, cargo, activo FROM usuarios WHERE id = ?').get(id)
   const cargoNuevo = Object.prototype.hasOwnProperty.call(b, 'cargo') ? normalizarCargo(b.cargo) : null
-  db.prepare('UPDATE usuarios SET nombre_completo = COALESCE(?, nombre_completo), rol = COALESCE(?, rol), cargo = COALESCE(?, cargo), activo = COALESCE(?, activo) WHERE id = ?')
-    .run(b.nombre_completo || null, b.rol || null, cargoNuevo, b.activo === undefined ? null : (b.activo ? 1 : 0), id)
+  db.prepare('UPDATE usuarios SET nombre_completo = COALESCE(?, nombre_completo), rol = COALESCE(?, rol), cargo = CASE WHEN ? IS NULL THEN cargo ELSE ? END, activo = COALESCE(?, activo) WHERE id = ?')
+    .run(b.nombre_completo || null, b.rol || null, cargoNuevo, cargoNuevo, b.activo === undefined ? null : (b.activo ? 1 : 0), id)
   const despues = db.prepare('SELECT nombre_completo, rol, cargo, activo FROM usuarios WHERE id = ?').get(id)
   const cambioPermisos = antes && despues && antes.rol !== despues.rol
   auditoria.registrar({
@@ -1006,6 +1010,7 @@ app.put('/api/usuarios/:id', requireAuth, requireRol('administrador'), (req, res
     despues
   })
   res.locals.auditado = true
+  try { db.pragma('wal_checkpoint(FULL)') } catch (e) { /* persistencia */ }
   res.json({ ok: true })
 })
 
