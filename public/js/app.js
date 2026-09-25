@@ -3649,9 +3649,5 @@ document.addEventListener('DOMContentLoaded', () => {
     if (e.target.closest('.dropdown-item')) cerrarMenus()
   })
 
-  $$('.modal').forEach((m) => m.addEventListener('click', (e) => {
-    if (e.target.classList.contains('modal')) e.target.classList.add('hidden')
-  }))
-
   iniciar()
 })
