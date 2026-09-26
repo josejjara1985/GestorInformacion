@@ -9,16 +9,16 @@
   },
   "scripts": {
     "start": "node server.js",
-    "dev": "node server.js"
+    "dev": "node server.js",
+    "test:persistencia": "node scripts/probar-persistencia.js",
+    "migrar:turso": "node scripts/migrar-a-turso.js"
   },
   "dependencies": {
+    "@libsql/client": "^0.14.0",
     "bcryptjs": "^2.4.3",
-    "better-sqlite3": "^13.0.3",
+    "better-sqlite3": "^11.8.1",
     "cookie-parser": "^1.4.7",
     "express": "^4.21.2",
     "express-session": "^1.18.1"
-  },
-  "allowScripts": {
-    "better-sqlite3@11.10.0": true
   }
 }
