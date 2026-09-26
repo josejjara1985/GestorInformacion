@@ -1,12 +1,24 @@
-'use strict'
+﻿'use strict'
+
+process.env.TURSO_URL = process.env.TURSO_URL || 'libsql://gestor-juzgado-josejjara1985.aws-us-east-1.turso.io'
+process.env.TURSO_AUTH_TOKEN = process.env.TURSO_AUTH_TOKEN || 'eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3OTAzNzQ4MDksImlkIjoiMDFhMGRhYTUtMzUwMS03NWMwLThiNzctMTBkYjA3MGJkYTZkIiwia2lkIjoiSnRiRk4ydUYwMjVGLWZzSHNFclpJN1dVZmlGWDRFVE11eXJ6ejg2SjRFNCIsInJpZCI6ImFkZWRkYzFlLTJhMDEtNDNlOS1hZmZiLWJlY2UzM2Q4NjNlZCJ9.UY72jwWt8YxOOSi0FlAUU3jShQy5b1Br3UR4VGsSU-qWFmtnSitbV1k__vI4KakS4N9g_iG_shTFCcE6d1kkDQ'
+
+
+process.on('uncaughtException', (err) => {
+  console.error('[ERROR NO CAPTURADO]', err && err.message)
+  console.error(err && err.stack)
+})
+process.on('unhandledRejection', (err) => {
+  console.error('[PROMESA RECHAZADA]', err && err.message)
+  console.error(err && err.stack)
+})
 
 const fs = require('fs')
 const path = require('path')
-try { require('dotenv').config({ path: path.join(__dirname, '.env') }) } catch (_e) { /* dotenv opcional */ }
 const express = require('express')
 const session = require('express-session')
 const bcrypt = require('bcryptjs')
-const { openDb, closeDb, persistir, registrarConfirmacion, getEsquema, loadEsquema, saveEsquema, columnasDe, tablasValidas, rowToObj, DB_PATH } = require('./lib/db')
+const { openDb, getDb, closeDb, persistir, registrarConfirmacion, getEsquema, loadEsquema, saveEsquema, columnasDe, tablasValidas, rowToObj, DB_PATH, abrirSoloLectura, esModoNube, importarDesdeSqlite } = require('./lib/db')
 const { parseFecha, hoyISO, addDays } = require('./lib/dates')
 const { reporteCompleto, reporteEstadistica, csvDeCompleto, csvDeEstadistica, csvDeTabla } = require('./lib/reportes')
 const { extraerFiltros, filtrarRegistros, columnasFecha, campoFechaEfectivo, normalizarRango } = require('./lib/busqueda')
@@ -33,9 +45,17 @@ const exportadores = require('./lib/exportadores')
 
 const PORT = Number(process.env.PORT || 3000)
 const app = express()
-let db = openDb()
-auditoria.init(db)
-backups.asegurarDirectorios()
+let db
+let listo = Promise.resolve().then(async () => {
+  db = await openDb()
+  auditoria.init(db)
+  backups.asegurarDirectorios()
+  return db
+})
+
+app.use((req, res, next) => {
+  listo.then(() => next()).catch(next)
+})
 
 const estadisticaCache = new Map()
 const ESTADISTICA_TTL_MS = 60 * 1000
@@ -49,21 +69,27 @@ function invalidarCaches() {
   inicioCacheAt = 0
 }
 
-function persistirAhora() {
+async function persistirAhora() {
+  db = await getDb()
   let r
   try {
-    r = persistir(db)
+    r = await persistir(db)
   } catch (e) {
-    const err = new Error('No se confirmó la escritura en disco: ' + e.message)
+    const err = new Error('No se confirmo la escritura en disco: ' + e.message)
     err.code = 'PERSISTENCIA'
     throw err
   }
-  if (!r || r.ok === false) {
-    const err = new Error('No se confirmó la escritura en disco: ' + ((r && r.error) || 'fsync/checkpoint falló'))
+  if (!r || r.ok === false || r.persistido !== true) {
+    const err = new Error('No se confirmo la escritura en disco: ' + ((r && r.error) || 'fsync/checkpoint fallo'))
     err.code = 'PERSISTENCIA'
     throw err
   }
   return r
+}
+
+async function responderPersistido(res, extra, disco) {
+  const d = disco || await persistirAhora()
+  res.json(Object.assign({ ok: true, persistido: true, ruta: d.ruta, archivo: d.archivo }, extra || {}))
 }
 
 function claveEstadistica(q) {
@@ -101,22 +127,23 @@ app.use(express.static(path.join(__dirname, 'public'), {
 }))
 app.use(auditoria.middlewareAuto())
 
-function usuarioSesion(req) {
+async function usuarioSesion(req) {
   if (!req.session.userId) return null
-  return db.prepare('SELECT id, nombre_completo AS nombre, username, rol, cargo, activo FROM usuarios WHERE id = ?').get(req.session.userId)
+  return await db.prepare('SELECT id, nombre_completo AS nombre, username, rol, cargo, activo FROM usuarios WHERE id = ?').get(req.session.userId)
 }
 
 function requireAuth(req, res, next) {
-  const u = usuarioSesion(req)
-  if (!u || !u.activo) return res.status(401).json({ error: 'No autenticado. Debe iniciar sesión.' })
-  req.usuario = u
-  next()
+  Promise.resolve(usuarioSesion(req)).then((u) => {
+    if (!u || !u.activo) return res.status(401).json({ error: 'No autenticado. Debe iniciar sesiÃ³n.' })
+    req.usuario = u
+    next()
+  }).catch(next)
 }
 
 function requireRol(...roles) {
   return (req, res, next) => {
     if (!req.usuario || !roles.includes(req.usuario.rol)) {
-      return res.status(403).json({ error: 'No tiene permiso para esta acción.' })
+      return res.status(403).json({ error: 'No tiene permiso para esta acciÃ³n.' })
     }
     next()
   }
@@ -138,13 +165,14 @@ function opcionesOficio(query) {
   }
 }
 
-app.get('/api/health', (_req, res) => {
+app.get('/api/health', async (_req, res) => {
   try {
-    const n = db.prepare('SELECT COUNT(*) AS c FROM usuarios').get().c
+    const n = (await db.prepare('SELECT COUNT(*) AS c FROM usuarios').get()).c
     res.json({
       ok: true,
-      nombre: 'GESTOR DE INFORMACIÓN JUZGADO PRIMERO PENAL DEL CIRCUITO ESPECIALIZADO DE TUMACO',
-      db: path.basename(DB_PATH),
+      nombre: 'GESTOR DE INFORMACIÃ“N JUZGADO PRIMERO PENAL DEL CIRCUITO ESPECIALIZADO DE TUMACO',
+      db: esModoNube() ? 'turso' : path.basename(DB_PATH),
+      modo: esModoNube() ? 'nube' : 'local',
       usuarios: n
     })
   } catch (e) {
@@ -152,54 +180,54 @@ app.get('/api/health', (_req, res) => {
   }
 })
 
-app.post('/api/login', (req, res) => {
+app.post('/api/login', async (req, res) => {
   const b = req.body || {}
   const username = String(b.username || b.usuario || b.user || '').trim()
   const password = String(b.password || b.clave || b.pass || '')
-  const fallar = (motivo) => {
-    auditoria.registrar({
+  const fallar = async (motivo) => {
+    await auditoria.registrar({
       req,
       accion: 'login',
       modulo: 'autenticacion',
       exito: false,
       usuario_nombre: username || 'anonimo',
-      descripcion: `Intento de inicio de sesión fallido para "${username || '(vacío)'}".`,
+      descripcion: `Intento de inicio de sesiÃ³n fallido para "${username || '(vacÃ­o)'}".`,
       error: motivo
     })
     res.locals.auditado = true
-    return res.status(401).json({ error: 'Usuario o contraseña incorrectos.' })
+    return res.status(401).json({ error: 'Usuario o contraseÃ±a incorrectos.' })
   }
-  if (!username || !password) return fallar('Credenciales incompletas')
-  const u = db.prepare('SELECT * FROM usuarios WHERE lower(username) = lower(?)').get(username)
-  if (!u || !u.activo) return fallar('Usuario inexistente o inactivo')
-  if (!bcrypt.compareSync(password, u.password_hash)) return fallar('Contraseña incorrecta')
+  if (!username || !password) return await fallar('Credenciales incompletas')
+  const u = await db.prepare('SELECT * FROM usuarios WHERE lower(username) = lower(?)').get(username)
+  if (!u || !u.activo) return await fallar('Usuario inexistente o inactivo')
+  if (!bcrypt.compareSync(password, u.password_hash)) return await fallar('ContraseÃ±a incorrecta')
   req.session.userId = u.id
-  req.session.save((err) => {
+  req.session.save(async (err) => {
     if (err) {
-      auditoria.registrar({
+      await auditoria.registrar({
         req, accion: 'login', modulo: 'autenticacion', exito: false,
-        usuario_nombre: username, descripcion: 'Error al guardar la sesión.', error: err.message
+        usuario_nombre: username, descripcion: 'Error al guardar la sesiÃ³n.', error: err.message
       })
       res.locals.auditado = true
-      return res.status(500).json({ error: 'No se pudo iniciar sesión.' })
+      return res.status(500).json({ error: 'No se pudo iniciar sesiÃ³n.' })
     }
     req.usuario = u
-    auditoria.registrar({
+    await auditoria.registrar({
       req, accion: 'login', modulo: 'autenticacion',
-      descripcion: `Inicio de sesión exitoso de "${u.username}".`
+      descripcion: `Inicio de sesiÃ³n exitoso de "${u.username}".`
     })
     res.locals.auditado = true
     res.json({ id: u.id, nombre: u.nombre_completo, username: u.username, rol: u.rol, cargo: u.cargo || '' })
   })
 })
 
-app.post('/api/logout', (req, res) => {
-  const u = usuarioSesion(req)
-  req.session.destroy(() => {
+app.post('/api/logout', async (req, res) => {
+  const u = await usuarioSesion(req)
+  req.session.destroy(async () => {
     if (u) {
-      auditoria.registrar({
+      await auditoria.registrar({
         req, usuario: u, accion: 'logout', modulo: 'autenticacion',
-        descripcion: `Cierre de sesión de "${u.username}".`
+        descripcion: `Cierre de sesiÃ³n de "${u.username}".`
       })
     }
     res.locals.auditado = true
@@ -207,7 +235,7 @@ app.post('/api/logout', (req, res) => {
   })
 })
 
-app.get('/api/me', requireAuth, (req, res) => {
+app.get('/api/me', requireAuth, async (req, res) => {
   res.json(req.usuario)
 })
 
@@ -220,52 +248,52 @@ function datosPersonalesUsuario(u) {
   }
 }
 
-function claveYaUsada(usuarioId, password, hashActual) {
+async function claveYaUsada(usuarioId, password, hashActual) {
   if (hashActual && bcrypt.compareSync(password, hashActual)) return true
-  const prev = db.prepare('SELECT password_hash FROM password_historial WHERE usuario_id = ?').all(usuarioId)
+  const prev = await db.prepare('SELECT password_hash FROM password_historial WHERE usuario_id = ?').all(usuarioId)
   return prev.some((h) => bcrypt.compareSync(password, h.password_hash))
 }
 
-function guardarNuevaClave(usuarioId, hashAnterior, password) {
+async function guardarNuevaClave(usuarioId, hashAnterior, password) {
   const hash = bcrypt.hashSync(password, 10)
-  const tx = db.transaction(() => {
+  const tx = db.transaction(async () => {
     if (hashAnterior) {
-      db.prepare('INSERT INTO password_historial (usuario_id, password_hash) VALUES (?, ?)').run(usuarioId, hashAnterior)
+      await db.prepare('INSERT INTO password_historial (usuario_id, password_hash) VALUES (?, ?)').run(usuarioId, hashAnterior)
     }
-    db.prepare('UPDATE usuarios SET password_hash = ? WHERE id = ?').run(hash, usuarioId)
+    await db.prepare('UPDATE usuarios SET password_hash = ? WHERE id = ?').run(hash, usuarioId)
   })
-  tx()
+  await tx()
 }
 
-app.put('/api/me/password', requireAuth, (req, res) => {
+app.put('/api/me/password', requireAuth, async (req, res) => {
   const b = req.body || {}
   const actual = String(b.actual || b.password_actual || '')
   const nueva = String(b.nueva || b.password || '')
   const confirmar = String(b.confirmar || b.password_confirm || nueva)
-  if (nueva !== confirmar) return res.status(400).json({ error: 'La confirmación no coincide con la nueva contraseña.' })
-  const u = db.prepare('SELECT id, username, nombre_completo, password_hash FROM usuarios WHERE id = ?').get(req.usuario.id)
+  if (nueva !== confirmar) return res.status(400).json({ error: 'La confirmaciÃ³n no coincide con la nueva contraseÃ±a.' })
+  const u = await db.prepare('SELECT id, username, nombre_completo, password_hash FROM usuarios WHERE id = ?').get(req.usuario.id)
   if (!u || !bcrypt.compareSync(actual, u.password_hash)) {
-    return res.status(400).json({ error: 'La contraseña actual no es correcta.' })
+    return res.status(400).json({ error: 'La contraseÃ±a actual no es correcta.' })
   }
   const chequeo = validarClaveSegura(nueva, datosPersonalesUsuario(u))
   if (!chequeo.ok) return res.status(400).json({ error: mensajeError(chequeo), requisitos: chequeo.requisitos })
-  if (claveYaUsada(u.id, nueva, u.password_hash)) {
+  if (await claveYaUsada(u.id, nueva, u.password_hash)) {
     return res.status(400).json({ error: 'No se permite reutilizar claves anteriores.' })
   }
-  guardarNuevaClave(u.id, u.password_hash, nueva)
-  auditoria.registrar({
+  await guardarNuevaClave(u.id, u.password_hash, nueva)
+  await auditoria.registrar({
     req,
     accion: 'cambio_clave',
     modulo: 'seguridad',
     registro_id: u.id,
-    descripcion: `El usuario "${u.username}" cambió su propia contraseña.`
+    descripcion: `El usuario "${u.username}" cambiÃ³ su propia contraseÃ±a.`
   })
   res.locals.auditado = true
-  persistirAhora()
-  res.json({ ok: true, persistido: true })
+  const discoMe = await persistirAhora()
+  await responderPersistido(res, {}, discoMe)
 })
 
-app.get('/api/tablas', requireAuth, (_req, res) => {
+app.get('/api/tablas', requireAuth, async (_req, res) => {
   res.json(getEsquema())
 })
 
@@ -310,7 +338,7 @@ function filaNotificacion(tabla, row) {
     }
   }
   if (tabla === 'procuradores') {
-    const etiqueta = [row.procuraduria, row.procurador].filter(Boolean).join(' — ')
+    const etiqueta = [row.procuraduria, row.procurador].filter(Boolean).join(' â€” ')
     const notif = [
       row.correo_institucional,
       row.celular,
@@ -346,7 +374,7 @@ function filaNotificacion(tabla, row) {
     }
   }
   if (tabla === 'inpec') {
-    const etiqueta = [row.ciudad, row.oficina, row.nombre_del_resposable].filter(Boolean).join(' — ')
+    const etiqueta = [row.ciudad, row.oficina, row.nombre_del_resposable].filter(Boolean).join(' â€” ')
     const notif = [
       row.direccion,
       row.telefono,
@@ -365,7 +393,7 @@ function filaNotificacion(tabla, row) {
     }
   }
   if (tabla === 'rama_judicial') {
-    const etiqueta = [row.nombre, row.lugar].filter(Boolean).join(' — ')
+    const etiqueta = [row.nombre, row.lugar].filter(Boolean).join(' â€” ')
     const notif = [row.direccion, row.telefono, row.fax, row.correo_electronico].filter(Boolean).join('\n')
     return {
       id: row.id,
@@ -380,7 +408,7 @@ function filaNotificacion(tabla, row) {
   return null
 }
 
-app.get('/api/directorios', requireAuth, (req, res) => {
+app.get('/api/directorios', requireAuth, async (req, res) => {
   const mapa = {
     fiscales: 'fiscales',
     defensores: 'defensores',
@@ -391,15 +419,15 @@ app.get('/api/directorios', requireAuth, (req, res) => {
   }
   const out = {}
   for (const [clave, tabla] of Object.entries(mapa)) {
-    const rows = db.prepare(`SELECT * FROM ${tabla}`).all()
+    const rows = await db.prepare(`SELECT * FROM ${tabla}`).all()
     out[clave] = rows.map((r) => filaNotificacion(tabla, r)).filter(Boolean)
   }
   res.json(out)
 })
 
-app.get('/api/tabla/:tabla', requireAuth, (req, res) => {
+app.get('/api/tabla/:tabla', requireAuth, async (req, res) => {
   const tabla = req.params.tabla
-  if (!validarTabla(tabla)) return res.status(404).json({ error: 'Módulo no encontrado.' })
+  if (!validarTabla(tabla)) return res.status(404).json({ error: 'MÃ³dulo no encontrado.' })
   const conf = getEsquema()[tabla]
   const page = Math.max(1, Number(req.query.page) || 1)
   const perPage = Math.min(100, Math.max(1, Number(req.query.perPage) || 15))
@@ -408,7 +436,7 @@ app.get('/api/tabla/:tabla', requireAuth, (req, res) => {
   const hasta = String(req.query.hasta || '').trim()
   const fechaCampo = campoFechaEfectivo(conf, req.query.fecha_campo || req.query.campo_fecha)
   const filtros = extraerFiltros(req.query, conf)
-  const rows = db.prepare(`SELECT * FROM ${tabla}`).all()
+  const rows = await db.prepare(`SELECT * FROM ${tabla}`).all()
   const filtrado = filtrarRegistros(rows, conf, { desde, hasta, fechaCampo, q, filtros })
   filtrado.resultados.sort((a, b) => (b.row.id || 0) - (a.row.id || 0))
   const total = filtrado.resultados.length
@@ -434,70 +462,70 @@ app.get('/api/tabla/:tabla', requireAuth, (req, res) => {
   })
 })
 
-app.get('/api/tabla/:tabla/:id', requireAuth, (req, res) => {
+app.get('/api/tabla/:tabla/:id', requireAuth, async (req, res) => {
   const tabla = req.params.tabla
-  if (!validarTabla(tabla)) return res.status(404).json({ error: 'Módulo no encontrado.' })
-  const r = db.prepare(`SELECT * FROM ${tabla} WHERE id = ?`).get(Number(req.params.id))
+  if (!validarTabla(tabla)) return res.status(404).json({ error: 'MÃ³dulo no encontrado.' })
+  const r = await db.prepare(`SELECT * FROM ${tabla} WHERE id = ?`).get(Number(req.params.id))
   if (!r) return res.status(404).json({ error: 'Registro no encontrado.' })
   res.json(rowToObj(r))
 })
 
-app.post('/api/tabla/:tabla', requireAuth, requireRol('administrador', 'usuario'), (req, res) => {
+app.post('/api/tabla/:tabla', requireAuth, requireRol('administrador', 'usuario'), async (req, res) => {
   const tabla = req.params.tabla
-  if (!validarTabla(tabla)) return res.status(404).json({ error: 'Módulo no encontrado.' })
+  if (!validarTabla(tabla)) return res.status(404).json({ error: 'MÃ³dulo no encontrado.' })
   const cols = columnasDe(tabla)
   const body = req.body || {}
   const used = cols.filter((c) => body[c] != null)
   const sql = `INSERT INTO ${tabla} (${used.join(',')}) VALUES (${used.map(() => '?').join(',')})`
-  const info = db.prepare(sql).run(...used.map((c) => body[c]))
+  const info = await db.prepare(sql).run(...used.map((c) => body[c]))
   const id = Number(info.lastInsertRowid)
-  const guardado = db.prepare(`SELECT id FROM ${tabla} WHERE id = ?`).get(id)
-  if (!guardado) return res.status(500).json({ error: 'El registro no quedó almacenado.' })
-  const disco = persistirAhora()
+  const guardado = await db.prepare(`SELECT id FROM ${tabla} WHERE id = ?`).get(id)
+  if (!guardado) return res.status(500).json({ error: 'El registro no quedÃ³ almacenado.' })
+  const disco = await persistirAhora()
   invalidarCaches()
-  const confirmado = db.prepare(`SELECT id FROM ${tabla} WHERE id = ?`).get(id)
-  if (!confirmado) return res.status(500).json({ error: 'El registro no quedó almacenado.' })
+  const confirmado = await db.prepare(`SELECT id FROM ${tabla} WHERE id = ?`).get(id)
+  if (!confirmado) return res.status(500).json({ error: 'El registro no quedo almacenado.' })
   registrarConfirmacion('POST ' + tabla + ' id=' + id)
-  res.json({ ok: true, id, persistido: true, ruta: disco.ruta, archivo: disco.archivo })
+  await responderPersistido(res, { id }, disco)
 })
 
-app.put('/api/tabla/:tabla/:id', requireAuth, requireRol('administrador', 'usuario'), (req, res) => {
+app.put('/api/tabla/:tabla/:id', requireAuth, requireRol('administrador', 'usuario'), async (req, res) => {
   const tabla = req.params.tabla
-  if (!validarTabla(tabla)) return res.status(404).json({ error: 'Módulo no encontrado.' })
+  if (!validarTabla(tabla)) return res.status(404).json({ error: 'MÃ³dulo no encontrado.' })
   const cols = columnasDe(tabla)
   const body = req.body || {}
   const used = cols.filter((c) => Object.prototype.hasOwnProperty.call(body, c))
   if (!used.length) return res.status(400).json({ error: 'Sin campos para actualizar.' })
   const sql = `UPDATE ${tabla} SET ${used.map((c) => c + ' = ?').join(', ')} WHERE id = ?`
   const id = Number(req.params.id)
-  const info = db.prepare(sql).run(...used.map((c) => body[c]), id)
+  const info = await db.prepare(sql).run(...used.map((c) => body[c]), id)
   if (!info.changes) {
-    const existe = db.prepare(`SELECT id FROM ${tabla} WHERE id = ?`).get(id)
+    const existe = await db.prepare(`SELECT id FROM ${tabla} WHERE id = ?`).get(id)
     if (!existe) return res.status(404).json({ error: 'Registro no encontrado.' })
   }
-  const disco = persistirAhora()
+  const disco = await persistirAhora()
   invalidarCaches()
-  const confirmado = db.prepare(`SELECT id FROM ${tabla} WHERE id = ?`).get(id)
+  const confirmado = await db.prepare(`SELECT id FROM ${tabla} WHERE id = ?`).get(id)
   if (!confirmado) return res.status(404).json({ error: 'Registro no encontrado.' })
   registrarConfirmacion('PUT ' + tabla + ' id=' + id)
-  res.json({ ok: true, persistido: true, ruta: disco.ruta, archivo: disco.archivo })
+  await responderPersistido(res, {}, disco)
 })
 
-app.delete('/api/tabla/:tabla/:id', requireAuth, requireRol('administrador'), (req, res) => {
+app.delete('/api/tabla/:tabla/:id', requireAuth, requireRol('administrador'), async (req, res) => {
   const tabla = req.params.tabla
-  if (!validarTabla(tabla)) return res.status(404).json({ error: 'Módulo no encontrado.' })
-  db.prepare(`DELETE FROM ${tabla} WHERE id = ?`).run(Number(req.params.id))
-  persistirAhora()
+  if (!validarTabla(tabla)) return res.status(404).json({ error: 'MÃ³dulo no encontrado.' })
+  await db.prepare(`DELETE FROM ${tabla} WHERE id = ?`).run(Number(req.params.id))
+  const disco = await persistirAhora()
   invalidarCaches()
-  res.json({ ok: true, persistido: true })
+  await responderPersistido(res, {}, disco)
 })
 
-app.get('/api/reportes/:tabla', requireAuth, (req, res) => {
+app.get('/api/reportes/:tabla', requireAuth, async (req, res) => {
   const tabla = req.params.tabla
-  if (!validarTabla(tabla)) return res.status(404).json({ error: 'Módulo no encontrado.' })
+  if (!validarTabla(tabla)) return res.status(404).json({ error: 'MÃ³dulo no encontrado.' })
   const conf = getEsquema()[tabla]
   const rango = normalizarRango(req.query.desde || '', req.query.hasta || '')
-  const rows = db.prepare(`SELECT * FROM ${tabla}`).all()
+  const rows = await db.prepare(`SELECT * FROM ${tabla}`).all()
   const total = rows.length
   const fe = conf.fecha_entrada
   const fs = conf.fecha_salida
@@ -541,8 +569,8 @@ function enRangoFecha(valor, rango) {
   return true
 }
 
-function mapaAudienciasCalendario(tabla) {
-  const rows = db.prepare(`
+async function mapaAudienciasCalendario(tabla) {
+  const rows = await db.prepare(`
     SELECT registro_id, fecha, hora, tipo_audiencia, titulo
     FROM calendario
     WHERE modulo = ? AND registro_id IS NOT NULL
@@ -555,14 +583,14 @@ function mapaAudienciasCalendario(tabla) {
   return map
 }
 
-function filasConAudiencia(tabla, rows) {
-  const cal = mapaAudienciasCalendario(tabla)
+async function filasConAudiencia(tabla, rows) {
+  const cal = await mapaAudienciasCalendario(tabla)
   return rows.map((r) => aplicarAudiencia(rowToObj(r), cal.get(r.id)))
 }
 
-app.get('/api/reportes/:tabla/procesos', requireAuth, (req, res) => {
+app.get('/api/reportes/:tabla/procesos', requireAuth, async (req, res) => {
   const tabla = req.params.tabla
-  if (!validarTabla(tabla)) return res.status(404).json({ error: 'Módulo no encontrado.' })
+  if (!validarTabla(tabla)) return res.status(404).json({ error: 'MÃ³dulo no encontrado.' })
   const conf = getEsquema()[tabla]
   const tipo = req.query.tipo || 'campo'
   let fechaCampo = req.query.fecha_campo || req.query.campo_fecha || ''
@@ -571,7 +599,7 @@ app.get('/api/reportes/:tabla/procesos', requireAuth, (req, res) => {
     else fechaCampo = conf.fecha_entrada
   }
   fechaCampo = campoFechaEfectivo(conf, fechaCampo)
-  const rows = db.prepare(`SELECT * FROM ${tabla}`).all()
+  const rows = await db.prepare(`SELECT * FROM ${tabla}`).all()
   const rango = normalizarRango(req.query.desde || '', req.query.hasta || '')
   const filtrado = filtrarRegistros(rows, conf, {
     desde: rango.desde,
@@ -589,7 +617,7 @@ app.get('/api/reportes/:tabla/procesos', requireAuth, (req, res) => {
     if (fs && enRangoFecha(r[fs], rango)) salidos++
   }
   const colFecha = (conf.columnas || []).find((c) => c.nombre === fechaCampo)
-  const registros = filasConAudiencia(tabla, filtrado.resultados.map((x) => x.row))
+  const registros = await filasConAudiencia(tabla, filtrado.resultados.map((x) => x.row))
   res.json({
     registros,
     columnas: columnasConsultaVista(conf),
@@ -604,12 +632,12 @@ app.get('/api/reportes/:tabla/procesos', requireAuth, (req, res) => {
   })
 })
 
-app.get('/api/reportes/:tabla/export', requireAuth, (req, res) => {
+app.get('/api/reportes/:tabla/export', requireAuth, async (req, res) => {
   const tabla = req.params.tabla
-  if (!validarTabla(tabla)) return res.status(404).json({ error: 'Módulo no encontrado.' })
+  if (!validarTabla(tabla)) return res.status(404).json({ error: 'MÃ³dulo no encontrado.' })
   const conf = getEsquema()[tabla]
   const todos = String(req.query.todos || '') === 'true'
-  let rows = db.prepare(`SELECT * FROM ${tabla}`).all()
+  let rows = await db.prepare(`SELECT * FROM ${tabla}`).all()
   if (!todos) {
     const tipo = req.query.tipo || 'campo'
     let fechaCampo = req.query.fecha_campo || req.query.campo_fecha || ''
@@ -625,7 +653,7 @@ app.get('/api/reportes/:tabla/export', requireAuth, (req, res) => {
       q: String(req.query.q || '').trim(),
       filtros: extraerFiltros(req.query, conf)
     })
-    rows = filasConAudiencia(tabla, filtrado.resultados.map((x) => x.row))
+    rows = await filasConAudiencia(tabla, filtrado.resultados.map((x) => x.row))
     res.setHeader('Content-Type', 'text/csv; charset=utf-8')
     res.setHeader('Content-Disposition', `attachment; filename="${tabla}-consulta.csv"`)
     return res.send('\uFEFF' + csvDeConsulta(conf, rows, tabla))
@@ -635,9 +663,9 @@ app.get('/api/reportes/:tabla/export', requireAuth, (req, res) => {
   res.send('\uFEFF' + csvDeTabla(conf, rows, tabla))
 })
 
-app.get('/api/ia/completo', requireAuth, (req, res) => {
+app.get('/api/ia/completo', requireAuth, async (req, res) => {
   const limite = Math.min(500, Math.max(1, Number(req.query.limite) || 50))
-  const data = reporteCompleto(db, getEsquema(), {
+  const data = await reporteCompleto(db, getEsquema(), {
     desde: req.query.desde || '',
     hasta: req.query.hasta || '',
     modulo: req.query.modulo || '',
@@ -647,8 +675,8 @@ app.get('/api/ia/completo', requireAuth, (req, res) => {
   res.json(data)
 })
 
-app.get('/api/ia/completo.csv', requireAuth, (req, res) => {
-  const data = reporteCompleto(db, getEsquema(), {
+app.get('/api/ia/completo.csv', requireAuth, async (req, res) => {
+  const data = await reporteCompleto(db, getEsquema(), {
     desde: req.query.desde || '',
     hasta: req.query.hasta || '',
     modulo: req.query.modulo || '',
@@ -659,7 +687,7 @@ app.get('/api/ia/completo.csv', requireAuth, (req, res) => {
   res.send('\uFEFF' + csvDeCompleto(data))
 })
 
-app.get('/api/inicio', requireAuth, (_req, res) => {
+app.get('/api/inicio', requireAuth, async (_req, res) => {
   const ahora = Date.now()
   if (inicioCache && ahora - inicioCacheAt < INICIO_TTL_MS) return res.json(inicioCache)
   const esquema = getEsquema()
@@ -667,7 +695,7 @@ app.get('/api/inicio', requireAuth, (_req, res) => {
   const resumen = []
   for (const tabla of Object.keys(esquema)) {
     const conf = esquema[tabla]
-    const rows = db.prepare(`SELECT * FROM ${tabla}`).all()
+    const rows = await db.prepare(`SELECT * FROM ${tabla}`).all()
     const fe = conf.fecha_entrada
     const fs = conf.fecha_salida
     let ingresados = 0
@@ -701,11 +729,11 @@ app.get('/api/inicio', requireAuth, (_req, res) => {
   res.json(data)
 })
 
-app.get('/api/ia/estadistica', requireAuth, (req, res) => {
+app.get('/api/ia/estadistica', requireAuth, async (req, res) => {
   const clave = claveEstadistica(req.query)
   const hit = estadisticaCache.get(clave)
   if (hit && Date.now() - hit.at < ESTADISTICA_TTL_MS) return res.json(hit.data)
-  const data = reporteEstadistica(db, {
+  const data = await reporteEstadistica(db, {
     desde: req.query.desde || '',
     hasta: req.query.hasta || '',
     fechaCampo: req.query.fecha_campo || req.query.campo_fecha || ''
@@ -714,8 +742,8 @@ app.get('/api/ia/estadistica', requireAuth, (req, res) => {
   res.json(data)
 })
 
-app.get('/api/ia/estadistica.csv', requireAuth, (req, res) => {
-  const data = reporteEstadistica(db, {
+app.get('/api/ia/estadistica.csv', requireAuth, async (req, res) => {
+  const data = await reporteEstadistica(db, {
     desde: req.query.desde || '',
     hasta: req.query.hasta || '',
     fechaCampo: req.query.fecha_campo || req.query.campo_fecha || ''
@@ -725,12 +753,12 @@ app.get('/api/ia/estadistica.csv', requireAuth, (req, res) => {
   res.send('\uFEFF' + csvDeEstadistica(data))
 })
 
-app.get('/api/orden-verbal/buscar', requireAuth, (req, res) => {
+app.get('/api/orden-verbal/buscar', requireAuth, async (req, res) => {
   const conf = getEsquema().procesos
   const page = Math.max(1, Number(req.query.page) || 1)
   const perPage = Math.min(50, Math.max(1, Number(req.query.perPage) || 12))
   const q = String(req.query.q || '').trim()
-  const rows = db.prepare('SELECT * FROM procesos').all()
+  const rows = await db.prepare('SELECT * FROM procesos').all()
   const filtrado = filtrarRegistros(rows, conf, {
     desde: '',
     hasta: '',
@@ -802,7 +830,7 @@ function construirOficioDocx(tipo, row) {
   return fn(row)
 }
 
-app.get('/api/oficios/:oficio/media/:archivo', requireAuth, (req, res) => {
+app.get('/api/oficios/:oficio/media/:archivo', requireAuth, async (req, res) => {
   const permitidos = { 'image1.png': 'image/png', 'image2.jpeg': 'image/jpeg', 'image2.jpg': 'image/jpeg' }
   const tipo = permitidos[req.params.archivo]
   if (!tipo) return res.status(404).json({ error: 'Recurso no encontrado.' })
@@ -816,10 +844,10 @@ app.get('/api/oficios/:oficio/media/:archivo', requireAuth, (req, res) => {
   res.send(datos)
 })
 
-app.get('/api/orden-verbal/:id', requireAuth, (req, res) => {
+app.get('/api/orden-verbal/:id', requireAuth, async (req, res) => {
   const id = Number(req.params.id)
   if (!Number.isFinite(id) || id <= 0) return res.status(404).json({ error: 'Registro no encontrado.' })
-  const r = db.prepare('SELECT * FROM procesos WHERE id = ?').get(id)
+  const r = await db.prepare('SELECT * FROM procesos WHERE id = ?').get(id)
   if (!r) return res.status(404).json({ error: 'Registro no encontrado.' })
   const tipoDocx = tipoDocxOficio(req.query)
   if (tipoDocx) {
@@ -844,10 +872,10 @@ app.get('/api/orden-verbal/:id', requireAuth, (req, res) => {
   })
 })
 
-app.get('/api/orden-verbal/:id/documento', requireAuth, (req, res) => {
+app.get('/api/orden-verbal/:id/documento', requireAuth, async (req, res) => {
   const id = Number(req.params.id)
   if (!Number.isFinite(id) || id <= 0) return res.status(404).json({ error: 'Registro no encontrado.' })
-  const r = db.prepare('SELECT * FROM procesos WHERE id = ?').get(id)
+  const r = await db.prepare('SELECT * FROM procesos WHERE id = ?').get(id)
   if (!r) return res.status(404).json({ error: 'Registro no encontrado.' })
   const descargar = String(req.query.descargar || '') === '1'
   const tipoDocx = tipoDocxOficio(req.query)
@@ -866,12 +894,12 @@ app.get('/api/orden-verbal/:id/documento', requireAuth, (req, res) => {
   res.send(data.documento)
 })
 
-app.get('/api/fijar-fecha', requireAuth, (req, res) => {
+app.get('/api/fijar-fecha', requireAuth, async (req, res) => {
   const page = Math.max(1, Number(req.query.page) || 1)
   const perPage = Math.min(200, Math.max(1, Number(req.query.perPage) || 20))
   const q = String(req.query.q || '').trim().toLowerCase()
   const filtro = String(req.query.filtro || 'todos')
-  const rows = db.prepare('SELECT * FROM procesos').all()
+  const rows = await db.prepare('SELECT * FROM procesos').all()
   const data = fijarFecha.consultar(rows, null, filtro)
   let registros = data.registros
   if (q) {
@@ -897,10 +925,10 @@ app.get('/api/fijar-fecha', requireAuth, (req, res) => {
   })
 })
 
-app.get('/api/fijar-fecha/export', requireAuth, (req, res) => {
+app.get('/api/fijar-fecha/export', requireAuth, async (req, res) => {
   const q = String(req.query.q || '').trim().toLowerCase()
   const filtro = String(req.query.filtro || 'todos')
-  const rows = db.prepare('SELECT * FROM procesos').all()
+  const rows = await db.prepare('SELECT * FROM procesos').all()
   const data = fijarFecha.consultar(rows, null, filtro)
   if (q) {
     data.registros = data.registros.filter((r) =>
@@ -916,19 +944,19 @@ app.get('/api/fijar-fecha/export', requireAuth, (req, res) => {
   res.send(xlsx)
 })
 
-app.get('/api/calendario', requireAuth, (req, res) => {
+app.get('/api/calendario', requireAuth, async (req, res) => {
   const desde = req.query.desde || addDays(hoyISO(), -40)
   const hasta = req.query.hasta || addDays(hoyISO(), 70)
-  const eventos = db.prepare(
+  const eventos = await db.prepare(
     'SELECT * FROM calendario WHERE fecha >= ? AND fecha <= ? ORDER BY fecha, hora, id'
   ).all(desde, hasta)
   res.json({ desde, hasta, eventos })
 })
 
-app.post('/api/calendario', requireAuth, requireRol('administrador', 'usuario'), (req, res) => {
+app.post('/api/calendario', requireAuth, requireRol('administrador', 'usuario'), async (req, res) => {
   const b = req.body || {}
   if (!b.fecha) return res.status(400).json({ error: 'Debe indicar la fecha.' })
-  const info = db.prepare(`
+  const info = await db.prepare(`
     INSERT INTO calendario (fecha, hora, titulo, proceso, tipo_audiencia, responsable, modulo, registro_id, estado, notas, alerta)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
@@ -936,46 +964,51 @@ app.post('/api/calendario', requireAuth, requireRol('administrador', 'usuario'),
     b.responsable || '', b.modulo || '', b.registro_id || null, b.estado || 'programada',
     b.notas || '', b.alerta === 0 ? 0 : 1
   )
-    persistirAhora()
+  const idCal = Number(info.lastInsertRowid)
+  const discoCal = await persistirAhora()
   invalidarCaches()
-  const confirmado = db.prepare('SELECT id FROM calendario WHERE id = ?').get(Number(info.lastInsertRowid))
-  if (!confirmado) return res.status(404).json({ error: 'El evento no quedó almacenado.' })
-  res.json({ ok: true, id: Number(info.lastInsertRowid), persistido: true })
+  const confirmado = await db.prepare('SELECT id FROM calendario WHERE id = ?').get(idCal)
+  if (!confirmado) return res.status(500).json({ error: 'El evento no quedo almacenado.' })
+  await responderPersistido(res, { id: idCal }, discoCal)
 })
 
-app.put('/api/calendario/:id', requireAuth, requireRol('administrador', 'usuario'), (req, res) => {
+app.put('/api/calendario/:id', requireAuth, requireRol('administrador', 'usuario'), async (req, res) => {
   const b = req.body || {}
   const campos = ['fecha', 'hora', 'titulo', 'proceso', 'tipo_audiencia', 'responsable', 'modulo', 'registro_id', 'estado', 'notas', 'alerta']
   const used = campos.filter((c) => Object.prototype.hasOwnProperty.call(b, c))
   if (!used.length) return res.status(400).json({ error: 'Sin campos.' })
-  db.prepare(`UPDATE calendario SET ${used.map((c) => c + ' = ?').join(', ')} WHERE id = ?`)
-    .run(...used.map((c) => b[c]), Number(req.params.id))
-  persistirAhora()
+  const idCal = Number(req.params.id)
+  await db.prepare(`UPDATE calendario SET ${used.map((c) => c + ' = ?').join(', ')} WHERE id = ?`)
+    .run(...used.map((c) => b[c]), idCal)
+  const discoCal = await persistirAhora()
   invalidarCaches()
-  res.json({ ok: true, persistido: true })
+  const confirmado = await db.prepare('SELECT id FROM calendario WHERE id = ?').get(idCal)
+  if (!confirmado) return res.status(404).json({ error: 'Evento no encontrado.' })
+  await responderPersistido(res, {}, discoCal)
 })
 
-app.delete('/api/calendario/:id', requireAuth, requireRol('administrador', 'usuario'), (req, res) => {
-  db.prepare('DELETE FROM calendario WHERE id = ?').run(Number(req.params.id))
-  persistirAhora()
+app.delete('/api/calendario/:id', requireAuth, requireRol('administrador', 'usuario'), async (req, res) => {
+  const idCal = Number(req.params.id)
+  await db.prepare('DELETE FROM calendario WHERE id = ?').run(idCal)
+  const discoCal = await persistirAhora()
   invalidarCaches()
-  res.json({ ok: true, persistido: true })
+  await responderPersistido(res, {}, discoCal)
 })
 
-app.get('/api/alertas', requireAuth, (req, res) => {
+app.get('/api/alertas', requireAuth, async (req, res) => {
   const hoy = hoyISO()
   const limite = addDays(hoy, 7)
-  const eventos = db.prepare(`
+  const eventos = await db.prepare(`
     SELECT * FROM calendario
     WHERE alerta = 1 AND fecha >= ? AND fecha <= ?
     ORDER BY fecha, hora
   `).all(hoy, limite)
-  const vencidas = db.prepare(`
+  const vencidas = await db.prepare(`
     SELECT * FROM calendario
     WHERE alerta = 1 AND fecha < ? AND (estado IS NULL OR estado IN ('programada',''))
     ORDER BY fecha DESC LIMIT 30
   `).all(hoy)
-  const prescripciones = db.prepare(`
+  const prescripciones = await db.prepare(`
     SELECT id, codigo_interno, radicado, no, procesado_s, fecha_prescripcion, delito_estadistica
     FROM procesos
     WHERE fecha_prescripcion IS NOT NULL AND TRIM(fecha_prescripcion) != ''
@@ -1002,14 +1035,14 @@ function normalizarCargo(valor) {
   return hallado || v
 }
 
-app.get('/api/usuarios', requireAuth, requireRol('administrador'), (_req, res) => {
-  const usuarios = db.prepare('SELECT id, nombre_completo, username, rol, cargo, activo, creado_en FROM usuarios ORDER BY id').all()
+app.get('/api/usuarios', requireAuth, requireRol('administrador'), async (_req, res) => {
+  const usuarios = await db.prepare('SELECT id, nombre_completo, username, rol, cargo, activo, creado_en FROM usuarios ORDER BY id').all()
   res.json({ usuarios, cargos: CARGOS_USUARIO })
 })
 
-app.post('/api/usuarios', requireAuth, requireRol('administrador'), (req, res) => {
+app.post('/api/usuarios', requireAuth, requireRol('administrador'), async (req, res) => {
   const b = req.body || {}
-  if (!b.username || !b.password) return res.status(400).json({ error: 'Usuario y contraseña son obligatorios.' })
+  if (!b.username || !b.password) return res.status(400).json({ error: 'Usuario y contraseÃ±a son obligatorios.' })
   const chequeo = validarClaveSegura(String(b.password), {
     username: b.username,
     nombre: b.nombre_completo || b.nombre,
@@ -1018,90 +1051,99 @@ app.post('/api/usuarios', requireAuth, requireRol('administrador'), (req, res) =
   if (!chequeo.ok) return res.status(400).json({ error: mensajeError(chequeo), requisitos: chequeo.requisitos })
   const hash = bcrypt.hashSync(String(b.password), 10)
   try {
-    const info = db.prepare(
+    const info = await db.prepare(
       'INSERT INTO usuarios (nombre_completo, username, password_hash, rol, cargo, activo) VALUES (?, ?, ?, ?, ?, ?)'
     ).run(b.nombre_completo || b.username, String(b.username).trim(), hash, b.rol || 'consulta', normalizarCargo(b.cargo), b.activo === false ? 0 : 1)
-    auditoria.registrar({
+    await auditoria.registrar({
       req,
       accion: 'crear_usuario',
       modulo: 'usuarios',
       registro_id: info.lastInsertRowid,
-      descripcion: `Se creó el usuario "${String(b.username).trim()}" con rol ${b.rol || 'consulta'}.`,
+      descripcion: `Se creÃ³ el usuario "${String(b.username).trim()}" con rol ${b.rol || 'consulta'}.`,
       despues: { username: String(b.username).trim(), rol: b.rol || 'consulta', activo: b.activo === false ? 0 : 1 }
     })
     res.locals.auditado = true
-    persistirAhora()
-    res.json({ ok: true, id: Number(info.lastInsertRowid), persistido: true })
+    const idNuevo = Number(info.lastInsertRowid)
+    const discoUsr = await persistirAhora()
+    const ver = await db.prepare('SELECT id, cargo FROM usuarios WHERE id = ?').get(idNuevo)
+    if (!ver) return res.status(500).json({ error: 'El usuario no quedo almacenado.' })
+    await responderPersistido(res, { id: idNuevo }, discoUsr)
   } catch (e) {
-    if (e.code === 'PERSISTENCIA') return res.status(500).json({ error: e.message })
+    if (e.code === 'PERSISTENCIA') return res.status(500).json({ error: e.message, persistido: false })
     res.status(400).json({ error: 'El usuario ya existe.' })
   }
 })
 
-app.put('/api/usuarios/:id', requireAuth, requireRol('administrador'), (req, res) => {
+app.put('/api/usuarios/:id', requireAuth, requireRol('administrador'), async (req, res) => {
   const b = req.body || {}
   const id = Number(req.params.id)
-  const antes = db.prepare('SELECT nombre_completo, rol, cargo, activo FROM usuarios WHERE id = ?').get(id)
+  const antes = await db.prepare('SELECT nombre_completo, rol, cargo, activo FROM usuarios WHERE id = ?').get(id)
   const cargoNuevo = Object.prototype.hasOwnProperty.call(b, 'cargo') ? normalizarCargo(b.cargo) : null
-  db.prepare('UPDATE usuarios SET nombre_completo = COALESCE(?, nombre_completo), rol = COALESCE(?, rol), cargo = CASE WHEN ? IS NULL THEN cargo ELSE ? END, activo = COALESCE(?, activo) WHERE id = ?')
+  await db.prepare('UPDATE usuarios SET nombre_completo = COALESCE(?, nombre_completo), rol = COALESCE(?, rol), cargo = CASE WHEN ? IS NULL THEN cargo ELSE ? END, activo = COALESCE(?, activo) WHERE id = ?')
     .run(b.nombre_completo || null, b.rol || null, cargoNuevo, cargoNuevo, b.activo === undefined ? null : (b.activo ? 1 : 0), id)
-  const despues = db.prepare('SELECT nombre_completo, rol, cargo, activo FROM usuarios WHERE id = ?').get(id)
+  const despues = await db.prepare('SELECT nombre_completo, rol, cargo, activo FROM usuarios WHERE id = ?').get(id)
   const cambioPermisos = antes && despues && antes.rol !== despues.rol
-  auditoria.registrar({
+  await auditoria.registrar({
     req,
     accion: cambioPermisos ? 'cambio_permisos' : 'editar_usuario',
     modulo: 'usuarios',
     registro_id: id,
     descripcion: cambioPermisos
-      ? `Se modificaron los permisos (rol) del usuario #${id}: ${antes.rol} → ${despues.rol}.`
-      : `Se editó el usuario #${id}.`,
+      ? `Se modificaron los permisos (rol) del usuario #${id}: ${antes.rol} â†’ ${despues.rol}.`
+      : `Se editÃ³ el usuario #${id}.`,
     antes,
     despues
   })
   res.locals.auditado = true
-  persistirAhora()
-  res.json({ ok: true, persistido: true })
+  const discoUsr = await persistirAhora()
+  const ver = await db.prepare('SELECT id, cargo FROM usuarios WHERE id = ?').get(id)
+  if (!ver) return res.status(500).json({ error: 'El usuario no quedo almacenado.', persistido: false })
+  if (cargoNuevo !== null && String(ver.cargo || '') !== String(cargoNuevo)) {
+    return res.status(500).json({ error: 'El cargo no quedo almacenado en disco.', persistido: false })
+  }
+  registrarConfirmacion('PUT usuarios id=' + id + ' cargo=' + String(ver.cargo || ''))
+  await responderPersistido(res, { cargo: ver.cargo || '' }, discoUsr)
 })
 
-app.put('/api/usuarios/:id/password', requireAuth, requireRol('administrador'), (req, res) => {
+app.put('/api/usuarios/:id/password', requireAuth, requireRol('administrador'), async (req, res) => {
   const pass = String((req.body && req.body.password) || '')
   const id = Number(req.params.id)
-  const u = db.prepare('SELECT id, username, nombre_completo, password_hash FROM usuarios WHERE id = ?').get(id)
+  const u = await db.prepare('SELECT id, username, nombre_completo, password_hash FROM usuarios WHERE id = ?').get(id)
   if (!u) return res.status(404).json({ error: 'Usuario no encontrado.' })
   const chequeo = validarClaveSegura(pass, datosPersonalesUsuario(u))
   if (!chequeo.ok) return res.status(400).json({ error: mensajeError(chequeo), requisitos: chequeo.requisitos })
-  if (claveYaUsada(u.id, pass, u.password_hash)) {
+  if (await claveYaUsada(u.id, pass, u.password_hash)) {
     return res.status(400).json({ error: 'No se permite reutilizar claves anteriores.' })
   }
-  guardarNuevaClave(u.id, u.password_hash, pass)
-  auditoria.registrar({
+  await guardarNuevaClave(u.id, u.password_hash, pass)
+  await auditoria.registrar({
     req,
     accion: 'cambio_clave',
     modulo: 'usuarios',
     registro_id: u.id,
-    descripcion: `El administrador restableció la contraseña del usuario "${u.username}".`
+    descripcion: `El administrador restableciÃ³ la contraseÃ±a del usuario "${u.username}".`
   })
   res.locals.auditado = true
-  persistirAhora()
-  res.json({ ok: true, persistido: true })
+  const discoPass = await persistirAhora()
+  await responderPersistido(res, {}, discoPass)
 })
 
-app.delete('/api/usuarios/:id', requireAuth, requireRol('administrador'), (req, res) => {
+app.delete('/api/usuarios/:id', requireAuth, requireRol('administrador'), async (req, res) => {
   const id = Number(req.params.id)
-  if (id === req.usuario.id) return res.status(400).json({ error: 'No puede eliminarse a sí mismo.' })
-  const u = db.prepare('SELECT id, username, nombre_completo, rol FROM usuarios WHERE id = ?').get(id)
-  db.prepare('DELETE FROM usuarios WHERE id = ?').run(id)
-  auditoria.registrar({
+  if (id === req.usuario.id) return res.status(400).json({ error: 'No puede eliminarse a sÃ­ mismo.' })
+  const u = await db.prepare('SELECT id, username, nombre_completo, rol FROM usuarios WHERE id = ?').get(id)
+  await db.prepare('DELETE FROM usuarios WHERE id = ?').run(id)
+  await auditoria.registrar({
     req,
     accion: 'eliminar_usuario',
     modulo: 'usuarios',
     registro_id: id,
-    descripcion: `Se eliminó el usuario "${u ? u.username : '#' + id}".`,
+    descripcion: `Se eliminÃ³ el usuario "${u ? u.username : '#' + id}".`,
     antes: u || null
   })
   res.locals.auditado = true
-  persistirAhora()
-  res.json({ ok: true, persistido: true })
+  const discoDel = await persistirAhora()
+  await responderPersistido(res, {}, discoDel)
 })
 
 app.get('/api/backup', requireAuth, requireRol('administrador'), async (req, res) => {
@@ -1109,11 +1151,11 @@ app.get('/api/backup', requireAuth, requireRol('administrador'), async (req, res
   try {
     await db.backup(temporal)
     const buf = fs.readFileSync(temporal)
-    auditoria.registrar({
+    await auditoria.registrar({
       req,
       accion: 'descargar_backup',
       modulo: 'backups',
-      descripcion: 'Descarga rápida de la base de datos completa.',
+      descripcion: 'Descarga rÃ¡pida de la base de datos completa.',
       despues: { tamano: buf.length }
     })
     res.setHeader('Content-Type', 'application/octet-stream')
@@ -1126,12 +1168,12 @@ app.get('/api/backup', requireAuth, requireRol('administrador'), async (req, res
   }
 })
 
-app.post('/api/restore', requireAuth, requireRol('administrador'), (req, res) => {
+app.post('/api/restore', requireAuth, requireRol('administrador'), async (req, res) => {
   const datos = req.body && req.body.datos
-  if (!datos) return res.status(400).json({ error: 'Archivo vacío.' })
+  if (!datos) return res.status(400).json({ error: 'Archivo vacÃ­o.' })
   const buf = Buffer.from(datos, 'base64')
   if (buf.slice(0, 15).toString() !== 'SQLite format 3') {
-    return res.status(400).json({ error: 'El archivo no es una base SQLite válida.' })
+    return res.status(400).json({ error: 'El archivo no es una base SQLite vÃ¡lida.' })
   }
   const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
   const cuarentena = path.join(path.dirname(DB_PATH), 'cuarentena-' + stamp)
@@ -1139,14 +1181,13 @@ app.post('/api/restore', requireAuth, requireRol('administrador'), (req, res) =>
   try {
     fs.mkdirSync(cuarentena, { recursive: true })
     fs.mkdirSync(path.dirname(temporal), { recursive: true })
-    persistirAhora()
+    await persistirAhora()
     for (const n of ['juzgado.db', 'juzgado.db-wal', 'juzgado.db-shm']) {
       const src = path.join(path.dirname(DB_PATH), n)
       if (fs.existsSync(src)) fs.copyFileSync(src, path.join(cuarentena, n))
     }
     fs.writeFileSync(temporal, buf)
-    const Database = require('better-sqlite3')
-    const tmpDb = new Database(temporal, { readonly: true, fileMustExist: true })
+    const tmpDb = abrirSoloLectura(temporal)
     let integridad
     try {
       integridad = tmpDb.prepare('PRAGMA integrity_check').get()
@@ -1157,111 +1198,118 @@ app.post('/api/restore', requireAuth, requireRol('administrador'), (req, res) =>
     if (valor !== 'ok') {
       return res.status(400).json({ error: 'La copia no pasa integrity_check: ' + valor })
     }
-    closeDb()
-    fs.copyFileSync(temporal, DB_PATH)
-    for (const n of ['juzgado.db-wal', 'juzgado.db-shm']) {
-      const extra = path.join(path.dirname(DB_PATH), n)
-      try { if (fs.existsSync(extra)) fs.unlinkSync(extra) } catch (_e) { /* ignore */ }
+    if (esModoNube()) {
+      db = await openDb()
+      await importarDesdeSqlite(temporal)
+      auditoria.init(db)
+    } else {
+      await closeDb()
+      fs.copyFileSync(temporal, DB_PATH)
+      for (const n of ['juzgado.db-wal', 'juzgado.db-shm']) {
+        const extra = path.join(path.dirname(DB_PATH), n)
+        try { if (fs.existsSync(extra)) fs.unlinkSync(extra) } catch (_e) { /* ignore */ }
+      }
+      db = await openDb()
+      auditoria.init(db)
     }
-    db = openDb()
-    auditoria.init(db)
   } catch (e) {
-    try { db = openDb(); auditoria.init(db) } catch (_e) { /* ignore */ }
+    try { db = await openDb(); auditoria.init(db) } catch (_e) { /* ignore */ }
     return res.status(500).json({ error: 'No se pudo restaurar: ' + e.message })
   } finally {
     try { if (fs.existsSync(temporal)) fs.unlinkSync(temporal) } catch (_e) { /* ignore */ }
   }
-  auditoria.registrar({
+  await auditoria.registrar({
     req,
     accion: 'restaurar_backup',
     modulo: 'backups',
-    descripcion: 'Se restauró la base de datos desde un archivo cargado.',
+    descripcion: 'Se restaurÃ³ la base de datos desde un archivo cargado.',
     despues: { tamano: buf.length, cuarentena }
   })
   res.locals.auditado = true
-  persistirAhora()
-  res.json({ ok: true, persistido: true, advertencia: 'Restauración aplicada. La base anterior quedó en ' + cuarentena + '.' })
+  const discoRst = await persistirAhora()
+  await responderPersistido(res, { advertencia: 'Restauracion aplicada. La base anterior quedo en ' + cuarentena + '.' }, discoRst)
 })
 
-/* ------------------------------ Auditoría ------------------------------ */
+/* ------------------------------ AuditorÃ­a ------------------------------ */
 
-app.get('/api/auditoria', requireAuth, requireRol('administrador'), (req, res) => {
-  res.json(auditoria.listar(req.query))
+app.get('/api/auditoria', requireAuth, requireRol('administrador'), async (req, res) => {
+  res.json(await auditoria.listar(req.query))
 })
 
-app.get('/api/auditoria/opciones', requireAuth, requireRol('administrador'), (_req, res) => {
-  res.json(auditoria.opciones())
+app.get('/api/auditoria/opciones', requireAuth, requireRol('administrador'), async (_req, res) => {
+  res.json(await auditoria.opciones())
 })
 
-app.get('/api/auditoria/verificar', requireAuth, requireRol('administrador'), (req, res) => {
-  const r = auditoria.verificarCadena()
-  auditoria.insertarMeta({
+app.get('/api/auditoria/verificar', requireAuth, requireRol('administrador'), async (req, res) => {
+  const r = await auditoria.verificarCadena()
+  await auditoria.insertarMeta({
     usuario: req.usuario.username,
     ip: auditoria.ipDe(req),
     accion: 'verificacion_integridad',
-    detalle: `Verificación de integridad de la auditoría: ${r.ok ? 'cadena íntegra' : 'alteración detectada'} (${r.total} registros).`
+    detalle: `VerificaciÃ³n de integridad de la auditorÃ­a: ${r.ok ? 'cadena Ã­ntegra' : 'alteraciÃ³n detectada'} (${r.total} registros).`
   })
   res.json(r)
 })
 
-app.get('/api/auditoria/alertas', requireAuth, requireRol('administrador'), (req, res) => {
-  res.json({ alertas: auditoria.alertas(req.query.estado) })
+app.get('/api/auditoria/alertas', requireAuth, requireRol('administrador'), async (req, res) => {
+  res.json({ alertas: await auditoria.alertas(req.query.estado) })
 })
 
-app.get('/api/auditoria/meta', requireAuth, requireRol('administrador'), (_req, res) => {
-  const meta = db.prepare('SELECT * FROM auditoria_meta ORDER BY id DESC LIMIT 200').all()
+app.get('/api/auditoria/meta', requireAuth, requireRol('administrador'), async (_req, res) => {
+  const meta = await db.prepare('SELECT * FROM auditoria_meta ORDER BY id DESC LIMIT 200').all()
   res.json({ meta })
 })
 
-app.post('/api/auditoria/alertas/:id/atender', requireAuth, requireRol('administrador'), (req, res) => {
-  auditoria.atenderAlerta(req.params.id, req)
+app.post('/api/auditoria/alertas/:id/atender', requireAuth, requireRol('administrador'), async (req, res) => {
+  await auditoria.atenderAlerta(req.params.id, req)
   res.locals.auditado = true
-  res.json({ ok: true })
+  const discoAl = await persistirAhora()
+  await responderPersistido(res, {}, discoAl)
 })
 
 const COLUMNAS_AUDITORIA = [
   { nombre: 'fecha', etiqueta: 'Fecha y hora', peso: 1.3 },
   { nombre: 'usuario', etiqueta: 'Usuario', peso: 1 },
   { nombre: 'rol', etiqueta: 'Rol', peso: 0.8 },
-  { nombre: 'accion', etiqueta: 'Acción', peso: 1.2 },
-  { nombre: 'modulo', etiqueta: 'Módulo', peso: 1 },
+  { nombre: 'accion', etiqueta: 'AcciÃ³n', peso: 1.2 },
+  { nombre: 'modulo', etiqueta: 'MÃ³dulo', peso: 1 },
   { nombre: 'registro_id', etiqueta: 'ID registro', peso: 0.8 },
-  { nombre: 'descripcion', etiqueta: 'Descripción', peso: 2.4 },
+  { nombre: 'descripcion', etiqueta: 'DescripciÃ³n', peso: 2.4 },
   { nombre: 'ip', etiqueta: 'IP', peso: 1 },
   { nombre: 'dispositivo', etiqueta: 'Dispositivo', peso: 1.4 },
   { nombre: 'exito', etiqueta: 'Resultado', peso: 0.8 },
   { nombre: 'checksum', etiqueta: 'Checksum', peso: 1.6 }
 ]
 
-app.get('/api/auditoria/export', requireAuth, requireRol('administrador'), (req, res) => {
+app.get('/api/auditoria/export', requireAuth, requireRol('administrador'), async (req, res) => {
   const formato = String(req.query.formato || 'csv').toLowerCase()
-  const registros = auditoria.registrosParaExportar(req.query, 20000).map((r) => ({
+  const registros = (await auditoria.registrosParaExportar(req.query, 20000)).map((r) => ({
     ...r,
     exito: r.exito ? 'Exitoso' : 'Fallido'
   }))
   const fecha = new Date().toISOString().slice(0, 10)
-  auditoria.registrar({
+  await auditoria.registrar({
     req,
     accion: 'exportar_auditoria',
     modulo: 'auditoria',
-    descripcion: `Se exportó la auditoría en formato ${formato.toUpperCase()} (${registros.length} registros).`,
+    descripcion: `Se exportÃ³ la auditorÃ­a en formato ${formato.toUpperCase()} (${registros.length} registros).`,
     despues: { formato, registros: registros.length }
   })
-  auditoria.insertarMeta({
+  await auditoria.insertarMeta({
     usuario: req.usuario.username,
     ip: auditoria.ipDe(req),
     accion: 'exportacion_auditoria',
-    detalle: `Exportación de auditoría en formato ${formato.toUpperCase()} con ${registros.length} registros.`
+    detalle: `ExportaciÃ³n de auditorÃ­a en formato ${formato.toUpperCase()} con ${registros.length} registros.`
   })
   if (formato === 'xlsx' || formato === 'excel') {
-    const buf = exportadores.xlsx('Auditoría', COLUMNAS_AUDITORIA, registros)
+    const buf = exportadores.xlsx('AuditorÃ­a', COLUMNAS_AUDITORIA, registros)
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
     res.setHeader('Content-Disposition', `attachment; filename="auditoria-${fecha}.xlsx"`)
     return res.send(buf)
   }
   if (formato === 'pdf') {
     const buf = exportadores.pdf({
-      titulo: 'Auditoría del sistema',
+      titulo: 'AuditorÃ­a del sistema',
       subtitulo: `Juzgado Primero Penal del Circuito Especializado de Tumaco - Generado ${new Date().toLocaleString('es-CO')} - ${registros.length} registros`,
       columnas: COLUMNAS_AUDITORIA,
       filas: registros
@@ -1278,17 +1326,17 @@ app.get('/api/auditoria/export', requireAuth, requireRol('administrador'), (req,
 
 /* ------------------------------- Backups ------------------------------- */
 
-app.get('/api/backups', requireAuth, requireRol('administrador'), (_req, res) => {
+app.get('/api/backups', requireAuth, requireRol('administrador'), async (_req, res) => {
   res.json({
-    copias: backups.listar(),
-    config: programador.obtenerConfig(),
-    correo: programador.obtenerEmailConfig(false),
-    envios: programador.historialEnvios(50),
+    copias: await backups.listar(),
+    config: await programador.obtenerConfig(),
+    correo: await programador.obtenerEmailConfig(false),
+    envios: await programador.historialEnvios(50),
     almacenamiento: { principal: backups.BACKUPS_DIR, redundante: backups.REDUNDANTE_DIR }
   })
 })
 
-app.get('/api/backups/exportar', requireAuth, requireRol('administrador'), (req, res) => {
+app.get('/api/backups/exportar', requireAuth, requireRol('administrador'), async (req, res) => {
   const formato = String(req.query.formato || 'xlsx').toLowerCase()
   const esquema = getEsquema()
   const hojas = []
@@ -1300,28 +1348,28 @@ app.get('/api/backups/exportar', requireAuth, requireRol('administrador'), (req,
     const cols = (conf.columnas || []).map((c) => ({ nombre: c.nombre, etiqueta: c.etiqueta }))
     if (!cols.length) continue
     let filas = []
-    try { filas = db.prepare(`SELECT * FROM ${tabla}`).all() } catch (_e) { continue }
+    try { filas = await db.prepare(`SELECT * FROM ${tabla}`).all() } catch (_e) { continue }
     hojas.push({ nombre: conf.titulo || tabla, columnas: cols, filas })
     archivosCsv.push({ nombre: `${tabla}.csv`, datos: exportadores.csv(cols, filas) })
     resumen.push({ nombre: conf.titulo || tabla, etiqueta: 'Registros', valor: String(filas.length) })
   }
   hojas.unshift({
-    nombre: 'Información',
-    columnas: [{ nombre: 'descripcion', etiqueta: 'Descripción' }, { nombre: 'valor', etiqueta: 'Valor' }],
+    nombre: 'InformaciÃ³n',
+    columnas: [{ nombre: 'descripcion', etiqueta: 'DescripciÃ³n' }, { nombre: 'valor', etiqueta: 'Valor' }],
     filas: [
       { descripcion: 'Entidad', valor: 'Juzgado Primero Penal del Circuito Especializado de Tumaco' },
       { descripcion: 'Generado', valor: new Date().toLocaleString('es-CO') },
       { descripcion: 'Usuario', valor: req.usuario.username },
-      { descripcion: 'Módulos exportados', valor: String(hojas.length) },
+      { descripcion: 'MÃ³dulos exportados', valor: String(hojas.length) },
       ...resumen.map((r) => ({ descripcion: `Registros en ${r.nombre}`, valor: r.valor }))
     ]
   })
   const fecha = new Date().toISOString().slice(0, 10)
-  auditoria.registrar({
+  await auditoria.registrar({
     req,
     accion: 'exportar_backup_excel',
     modulo: 'backups',
-    descripcion: `Se exportó la base de datos en formato ${formato === 'csv' ? 'CSV (ZIP)' : 'Excel'} (${hojas.length} módulos).`,
+    descripcion: `Se exportÃ³ la base de datos en formato ${formato === 'csv' ? 'CSV (ZIP)' : 'Excel'} (${hojas.length} mÃ³dulos).`,
     despues: { formato, modulos: hojas.length, detalle: resumen.map((r) => `${r.nombre}: ${r.valor}`).join(', ') }
   })
   if (formato === 'csv') {
@@ -1338,7 +1386,7 @@ app.get('/api/backups/exportar', requireAuth, requireRol('administrador'), (req,
 
 app.post('/api/backups', requireAuth, requireRol('administrador'), async (req, res) => {
   const b = req.body || {}
-  const cfg = programador.obtenerConfig()
+  const cfg = await programador.obtenerConfig()
   const config = { ...cfg, cifrado: b.cifrado === undefined ? cfg.cifrado : (b.cifrado ? 1 : 0), redundancia: b.redundancia === undefined ? cfg.redundancia : (b.redundancia ? 1 : 0) }
   try {
     const r = await programador.ejecutar({
@@ -1352,9 +1400,9 @@ app.post('/api/backups', requireAuth, requireRol('administrador'), async (req, r
     res.locals.auditado = true
     res.json({ ok: true, backup: r.backup, correo: r.correo })
   } catch (e) {
-    auditoria.registrar({
+    await auditoria.registrar({
       req, accion: 'backup_manual', modulo: 'backups', exito: false,
-      descripcion: 'Falló la generación manual de la copia de seguridad.', error: e.message
+      descripcion: 'FallÃ³ la generaciÃ³n manual de la copia de seguridad.', error: e.message
     })
     res.locals.auditado = true
     res.status(500).json({ error: 'No se pudo generar la copia: ' + e.message })
@@ -1366,31 +1414,31 @@ app.post('/api/backups/ejecutar-ahora', requireAuth, requireRol('administrador')
     const r = await programador.ejecutar({
       tipo: 'automatico',
       usuario: req.usuario.username,
-      config: programador.obtenerConfig(),
+      config: await programador.obtenerConfig(),
       baseUrl: `${req.protocol}://${req.get('host')}`,
-      notas: 'Ejecución manual de la programación'
+      notas: 'EjecuciÃ³n manual de la programaciÃ³n'
     })
     const ahora = backups.ahoraLocal()
-    const cfg = programador.obtenerConfig()
-    require('./lib/db').openDb().prepare('UPDATE backup_config SET ultimo_ejecutado = ?, proximo_ejecutado = ? WHERE id = 1')
+    const cfg = await programador.obtenerConfig()
+    await (await getDb()).prepare('UPDATE backup_config SET ultimo_ejecutado = ?, proximo_ejecutado = ? WHERE id = 1')
       .run(ahora, cfg.activo ? programador.calcularProximo(cfg, new Date(Date.now() + 60000)) : null)
     res.locals.auditado = true
-    res.json({ ok: true, backup: r.backup, correo: r.correo, programador: programador.estado() })
+    res.json({ ok: true, backup: r.backup, correo: r.correo, programador: await programador.estado() })
   } catch (e) {
-    auditoria.registrar({
+    await auditoria.registrar({
       req, accion: 'backup_automatico', modulo: 'backups', exito: false,
-      descripcion: 'Falló la ejecución inmediata de la copia programada.', error: e.message
+      descripcion: 'FallÃ³ la ejecuciÃ³n inmediata de la copia programada.', error: e.message
     })
     res.locals.auditado = true
     res.status(500).json({ error: 'No se pudo ejecutar la copia programada: ' + e.message })
   }
 })
 
-app.get('/api/backups/programador', requireAuth, requireRol('administrador'), (_req, res) => {
-  res.json(programador.estado())
+app.get('/api/backups/programador', requireAuth, requireRol('administrador'), async (_req, res) => {
+  res.json(await programador.estado())
 })
 
-app.get('/api/vault', requireAuth, requireRol('administrador'), (_req, res) => {
+app.get('/api/vault', requireAuth, requireRol('administrador'), async (_req, res) => {
   const vault = require('./lib/vault')
   vault.asegurar()
   res.json({
@@ -1401,76 +1449,77 @@ app.get('/api/vault', requireAuth, requireRol('administrador'), (_req, res) => {
   })
 })
 
-app.post('/api/vault/verificar', requireAuth, requireRol('administrador'), (req, res) => {
+app.post('/api/vault/verificar', requireAuth, requireRol('administrador'), async (req, res) => {
   const vault = require('./lib/vault')
   const r = vault.verificarCadena()
-  auditoria.registrar({
+  await auditoria.registrar({
     req, accion: 'verificar_boveda', modulo: 'backups',
-    descripcion: r.ok ? `Bóveda íntegra (${r.copias} copias).` : `Bóveda con ${r.rotas.length} incidencias.`,
+    descripcion: r.ok ? `BÃ³veda Ã­ntegra (${r.copias} copias).` : `BÃ³veda con ${r.rotas.length} incidencias.`,
     despues: r
   })
   res.locals.auditado = true
   res.json(r)
 })
 
-app.post('/api/vault/punto-limpio/:id', requireAuth, requireRol('administrador'), (req, res) => {
+app.post('/api/vault/punto-limpio/:id', requireAuth, requireRol('administrador'), async (req, res) => {
   const vault = require('./lib/vault')
-  const reg = backups.obtener(Number(req.params.id))
+  const reg = await backups.obtener(Number(req.params.id))
   if (!reg) return res.status(404).json({ error: 'Copia no encontrada.' })
   const r = vault.marcarPuntoLimpio(reg)
-  auditoria.registrar({
+  await auditoria.registrar({
     req, accion: 'punto_limpio', modulo: 'backups', registro_id: reg.id,
-    descripcion: `Se marcó la copia "${reg.nombre}" como punto de restauración limpio.`,
+    descripcion: `Se marcÃ³ la copia "${reg.nombre}" como punto de restauraciÃ³n limpio.`,
     despues: r
   })
   res.locals.auditado = true
   res.json(r)
 })
 
-app.post('/api/vault/offline', requireAuth, requireRol('administrador'), (req, res) => {
+app.post('/api/vault/offline', requireAuth, requireRol('administrador'), async (req, res) => {
   const vault = require('./lib/vault')
   const r = vault.exportarOffline()
-  auditoria.registrar({
+  await auditoria.registrar({
     req, accion: 'exportar_offline', modulo: 'backups',
-    descripcion: `Se exportó un paquete offline de la bóveda (${r.copias} copias) a ${r.destino}.`,
+    descripcion: `Se exportÃ³ un paquete offline de la bÃ³veda (${r.copias} copias) a ${r.destino}.`,
     despues: r
   })
   res.locals.auditado = true
   res.json(r)
 })
 
-app.put('/api/backups/config', requireAuth, requireRol('administrador'), (req, res) => {
-  const antes = programador.obtenerConfig()
-  const despues = programador.guardarConfig(req.body || {})
-  auditoria.registrar({
+app.put('/api/backups/config', requireAuth, requireRol('administrador'), async (req, res) => {
+  const antes = await programador.obtenerConfig()
+  const despues = await programador.guardarConfig(req.body || {})
+  await auditoria.registrar({
     req,
     accion: 'config_backup',
     modulo: 'backups',
-    descripcion: 'Se actualizó la configuración de las copias de seguridad.',
+    descripcion: 'Se actualizÃ³ la configuraciÃ³n de las copias de seguridad.',
     antes,
     despues
   })
   res.locals.auditado = true
-  res.json({ ok: true, config: despues })
+  const discoBk = await persistirAhora()
+  await responderPersistido(res, { config: despues }, discoBk)
 })
 
-app.get('/api/backups/:id/descargar', (req, res, next) => {
+app.get('/api/backups/:id/descargar', async (req, res, next) => {
   const id = Number(req.params.id)
   const exp = req.query.exp
   const token = req.query.token
   if (exp && token) {
     if (!programador.verificarEnlace(id, exp, token)) {
-      return res.status(403).json({ error: 'Enlace seguro inválido o expirado.' })
+      return res.status(403).json({ error: 'Enlace seguro invÃ¡lido o expirado.' })
     }
   } else {
-    const u = usuarioSesion(req)
+    const u = await usuarioSesion(req)
     if (!u || !u.activo || u.rol !== 'administrador') {
       return res.status(403).json({ error: 'No tiene permiso para descargar esta copia.' })
     }
   }
   try {
-    const reg = backups.rutaArchivo(id)
-    auditoria.registrar({
+    const reg = await backups.rutaArchivo(id)
+    await auditoria.registrar({
       req,
       accion: 'descargar_backup',
       modulo: 'backups',
@@ -1485,133 +1534,135 @@ app.get('/api/backups/:id/descargar', (req, res, next) => {
   }
 })
 
-app.get('/api/backups/:id/enlace', requireAuth, requireRol('administrador'), (req, res) => {
+app.get('/api/backups/:id/enlace', requireAuth, requireRol('administrador'), async (req, res) => {
   const id = Number(req.params.id)
-  const reg = backups.obtener(id)
+  const reg = await backups.obtener(id)
   if (!reg) return res.status(404).json({ error: 'Copia no encontrada.' })
   const { exp, token } = programador.firmarEnlace(id, 72)
   const baseUrl = `${req.protocol}://${req.get('host')}`
   res.json({ url: `${baseUrl}/api/backups/${id}/descargar?exp=${exp}&token=${token}`, expira: new Date(exp).toISOString() })
 })
 
-app.post('/api/backups/:id/verificar', requireAuth, requireRol('administrador'), (req, res) => {
+app.post('/api/backups/:id/verificar', requireAuth, requireRol('administrador'), async (req, res) => {
   const id = Number(req.params.id)
-  const r = backups.probarRestauracion(id)
-  auditoria.registrar({
+  const r = await backups.probarRestauracion(id)
+  await auditoria.registrar({
     req,
     accion: 'verificar_backup',
     modulo: 'backups',
     registro_id: id,
-    descripcion: `Verificación de restauración de la copia #${id}: ${r.ok ? 'correcta' : 'fallida'}.`,
+    descripcion: `VerificaciÃ³n de restauraciÃ³n de la copia #${id}: ${r.ok ? 'correcta' : 'fallida'}.`,
     despues: r
   })
   res.locals.auditado = true
   res.json(r)
 })
 
-app.delete('/api/backups/:id', requireAuth, requireRol('administrador'), (req, res) => {
+app.delete('/api/backups/:id', requireAuth, requireRol('administrador'), async (req, res) => {
   const id = Number(req.params.id)
-  const reg = backups.obtener(id)
+  const reg = await backups.obtener(id)
   if (!reg) return res.status(404).json({ error: 'Copia no encontrada.' })
-  backups.eliminar(id)
-  auditoria.registrar({
+  await backups.eliminar(id)
+  await auditoria.registrar({
     req,
     accion: 'borrar_backup',
     modulo: 'backups',
     registro_id: id,
-    descripcion: `Se eliminó la copia de seguridad "${reg.nombre}".`,
+    descripcion: `Se eliminÃ³ la copia de seguridad "${reg.nombre}".`,
     antes: reg
   })
   res.locals.auditado = true
-  res.json({ ok: true })
+  const discoBkDel = await persistirAhora()
+  await responderPersistido(res, {}, discoBkDel)
 })
 
 /* -------------------------------- Correo ------------------------------- */
 
-app.get('/api/correo/config', requireAuth, requireRol('administrador'), (_req, res) => {
+app.get('/api/correo/config', requireAuth, requireRol('administrador'), async (_req, res) => {
   res.json({
-    correo: programador.obtenerEmailConfig(false),
-    envio: programador.obtenerConfig(),
-    envios: programador.historialEnvios(100)
+    correo: await programador.obtenerEmailConfig(false),
+    envio: await programador.obtenerConfig(),
+    envios: await programador.historialEnvios(100)
   })
 })
 
-app.put('/api/correo/config', requireAuth, requireRol('administrador'), (req, res) => {
+app.put('/api/correo/config', requireAuth, requireRol('administrador'), async (req, res) => {
   const b = req.body || {}
-  const antes = { ...programador.obtenerEmailConfig(false), envio: programador.obtenerConfig() }
-  const correo = programador.guardarEmailConfig(b)
-  const envio = programador.guardarConfig(b.envio || {
+  const antes = { ...await programador.obtenerEmailConfig(false), envio: await programador.obtenerConfig() }
+  const correo = await programador.guardarEmailConfig(b)
+  const envio = await programador.guardarConfig(b.envio || {
     correo_activo: b.correo_activo,
     correos: b.correos,
     asunto: b.asunto,
     adjunto_max_mb: b.adjunto_max_mb,
     reintentos: b.reintentos
   })
-  auditoria.registrar({
+  await auditoria.registrar({
     req,
     accion: 'config_correo',
     modulo: 'correo',
-    descripcion: 'Se actualizó la configuración de correo y frecuencia de copias.',
+    descripcion: 'Se actualizÃ³ la configuraciÃ³n de correo y frecuencia de copias.',
     antes: { ...antes, password: '***' },
     despues: { ...correo, password: '***', envio }
   })
   res.locals.auditado = true
-  res.json({ ok: true, correo, envio })
+  const discoMail = await persistirAhora()
+  await responderPersistido(res, { correo, envio }, discoMail)
 })
 
 app.post('/api/correo/prueba', requireAuth, requireRol('administrador'), async (req, res) => {
   const b = req.body || {}
   try {
-    const email = programador.obtenerEmailConfig(true)
-    const destinatarios = mailer.normalizarDestinatarios(b.destinatarios || programador.obtenerConfig().correos)
-    if (!destinatarios.length) return res.status(400).json({ error: 'Indique al menos un destinatario válido.' })
+    const email = await programador.obtenerEmailConfig(true)
+    const destinatarios = mailer.normalizarDestinatarios(b.destinatarios || await programador.obtenerConfig().correos)
+    if (!destinatarios.length) return res.status(400).json({ error: 'Indique al menos un destinatario vÃ¡lido.' })
     const r = await mailer.enviarConReintentos({
       config: email,
       para: destinatarios,
-      asunto: b.asunto || 'Prueba de configuración de correo - Juzgado Tumaco',
+      asunto: b.asunto || 'Prueba de configuraciÃ³n de correo - Juzgado Tumaco',
       texto: [
-        'GESTOR DE INFORMACIÓN - JUZGADO PRIMERO PENAL DEL CIRCUITO ESPECIALIZADO DE TUMACO',
+        'GESTOR DE INFORMACIÃ“N - JUZGADO PRIMERO PENAL DEL CIRCUITO ESPECIALIZADO DE TUMACO',
         '',
-        'Este es un correo de prueba enviado desde el módulo de Base de Datos.',
+        'Este es un correo de prueba enviado desde el mÃ³dulo de Base de Datos.',
         `Fecha: ${new Date().toLocaleString('es-CO')}`,
         `Destinatarios: ${destinatarios.join(', ')}`,
         '',
-        'Si recibió este mensaje, la configuración de correo es correcta.'
+        'Si recibiÃ³ este mensaje, la configuraciÃ³n de correo es correcta.'
       ].join('\n')
-    }, programador.obtenerConfig().reintentos)
+    }, await programador.obtenerConfig().reintentos)
     const estado = r.simulado ? 'simulado' : 'enviado'
-    db.prepare(`INSERT INTO correo_envios (destinatarios, asunto, estado, intentos, resumen, usuario)
+    await db.prepare(`INSERT INTO correo_envios (destinatarios, asunto, estado, intentos, resumen, usuario)
       VALUES (?, ?, ?, ?, ?, ?)`).run(
       JSON.stringify(destinatarios),
-      b.asunto || 'Prueba de configuración de correo - Juzgado Tumaco',
+      b.asunto || 'Prueba de configuraciÃ³n de correo - Juzgado Tumaco',
       estado, r.intentos || 1,
       r.simulado ? 'Prueba sin servidor SMTP configurado; guardada en data/outbox.' : 'Correo de prueba enviado.',
       req.usuario.username
     )
-    auditoria.registrar({
+    await auditoria.registrar({
       req, accion: 'prueba_correo', modulo: 'correo',
       descripcion: `Correo de prueba (${estado}) a ${destinatarios.join(', ')}.`
     })
     res.locals.auditado = true
     res.json({ ok: true, estado, intentos: r.intentos || 1, detalle: r.respuesta || r.archivo || '' })
   } catch (e) {
-    auditoria.registrar({
+    await auditoria.registrar({
       req, accion: 'prueba_correo', modulo: 'correo', exito: false,
-      descripcion: 'Falló el envío del correo de prueba.', error: e.message
+      descripcion: 'FallÃ³ el envÃ­o del correo de prueba.', error: e.message
     })
     res.locals.auditado = true
     res.status(500).json({ error: 'No se pudo enviar el correo de prueba: ' + e.message })
   }
 })
 
-app.get('/api/correo/envios', requireAuth, requireRol('administrador'), (req, res) => {
-  res.json({ envios: programador.historialEnvios(req.query.limite) })
+app.get('/api/correo/envios', requireAuth, requireRol('administrador'), async (req, res) => {
+  res.json({ envios: await programador.historialEnvios(req.query.limite) })
 })
 
-app.put('/api/esquema/:tabla', requireAuth, requireRol('administrador'), (req, res) => {
+app.put('/api/esquema/:tabla', requireAuth, requireRol('administrador'), async (req, res) => {
   const tabla = req.params.tabla
   const esquema = getEsquema()
-  if (!esquema[tabla]) return res.status(404).json({ error: 'Módulo no encontrado.' })
+  if (!esquema[tabla]) return res.status(404).json({ error: 'MÃ³dulo no encontrado.' })
   const b = req.body || {}
   if (b.titulo) esquema[tabla].titulo = b.titulo
   if (b.descripcion != null) esquema[tabla].descripcion = b.descripcion
@@ -1623,34 +1674,34 @@ app.put('/api/esquema/:tabla', requireAuth, requireRol('administrador'), (req, r
     for (const c of esquema[tabla].columnas) c.visible = set.has(c.nombre)
   }
   saveEsquema()
-  persistirAhora()
-  res.json({ ok: true, persistido: true })
+  const discoEs = await persistirAhora()
+  await responderPersistido(res, {}, discoEs)
 })
 
-app.delete('/api/esquema/:tabla', requireAuth, requireRol('administrador'), (req, res) => {
+app.delete('/api/esquema/:tabla', requireAuth, requireRol('administrador'), async (req, res) => {
   const tabla = req.params.tabla
-  if (tabla === 'procesos') return res.status(400).json({ error: 'No se puede eliminar el módulo de Procesos Penales.' })
+  if (tabla === 'procesos') return res.status(400).json({ error: 'No se puede eliminar el mÃ³dulo de Procesos Penales.' })
   const esquema = getEsquema()
-  if (!esquema[tabla]) return res.status(404).json({ error: 'Módulo no encontrado.' })
-  if (!(req.body && req.body.confirmar)) return res.status(400).json({ error: 'Debe confirmar la eliminación.' })
-  db.exec(`DROP TABLE IF EXISTS ${tabla}`)
+  if (!esquema[tabla]) return res.status(404).json({ error: 'MÃ³dulo no encontrado.' })
+  if (!(req.body && req.body.confirmar)) return res.status(400).json({ error: 'Debe confirmar la eliminaciÃ³n.' })
+  await db.exec(`DROP TABLE IF EXISTS ${tabla}`)
   delete esquema[tabla]
   saveEsquema()
-  persistirAhora()
-  res.json({ ok: true, persistido: true })
+  const discoDrop = await persistirAhora()
+  await responderPersistido(res, {}, discoDrop)
 })
 
-app.post('/api/esquema/:tabla/columnas', requireAuth, requireRol('administrador'), (req, res) => {
+app.post('/api/esquema/:tabla/columnas', requireAuth, requireRol('administrador'), async (req, res) => {
   const tabla = req.params.tabla
   const esquema = getEsquema()
-  if (!esquema[tabla]) return res.status(404).json({ error: 'Módulo no encontrado.' })
+  if (!esquema[tabla]) return res.status(404).json({ error: 'MÃ³dulo no encontrado.' })
   const b = req.body || {}
   const nombre = String(b.nombre || '').trim().toLowerCase().replace(/[^a-z0-9_]/g, '_')
-  if (!nombre) return res.status(400).json({ error: 'Nombre inválido.' })
+  if (!nombre) return res.status(400).json({ error: 'Nombre invÃ¡lido.' })
   if (esquema[tabla].columnas.some((c) => c.nombre === nombre)) {
     return res.status(400).json({ error: 'La columna ya existe.' })
   }
-  db.exec(`ALTER TABLE ${tabla} ADD COLUMN ${nombre} TEXT`)
+  await db.exec(`ALTER TABLE ${tabla} ADD COLUMN ${nombre} TEXT`)
   esquema[tabla].columnas.push({
     nombre,
     etiqueta: b.etiqueta || nombre,
@@ -1661,14 +1712,14 @@ app.post('/api/esquema/:tabla/columnas', requireAuth, requireRol('administrador'
   })
   if (b.visible) esquema[tabla].visibles.push(nombre)
   saveEsquema()
-  persistirAhora()
-  res.json({ ok: true, nombre, persistido: true })
+  const discoCol = await persistirAhora()
+  await responderPersistido(res, { nombre }, discoCol)
 })
 
-app.put('/api/esquema/:tabla/columnas/:nombre', requireAuth, requireRol('administrador'), (req, res) => {
+app.put('/api/esquema/:tabla/columnas/:nombre', requireAuth, requireRol('administrador'), async (req, res) => {
   const tabla = req.params.tabla
   const esquema = getEsquema()
-  if (!esquema[tabla]) return res.status(404).json({ error: 'Módulo no encontrado.' })
+  if (!esquema[tabla]) return res.status(404).json({ error: 'MÃ³dulo no encontrado.' })
   const c = esquema[tabla].columnas.find((x) => x.nombre === req.params.nombre)
   if (!c) return res.status(404).json({ error: 'Columna no encontrada.' })
   const b = req.body || {}
@@ -1679,43 +1730,43 @@ app.put('/api/esquema/:tabla/columnas/:nombre', requireAuth, requireRol('adminis
   if (Array.isArray(b.opciones)) c.opciones = b.opciones
   if (b.nombre && b.nombre !== c.nombre) {
     const nuevo = String(b.nombre).trim().toLowerCase().replace(/[^a-z0-9_]/g, '_')
-    try { db.exec(`ALTER TABLE ${tabla} RENAME COLUMN ${c.nombre} TO ${nuevo}`) } catch (e) { /* sqlite antiguo */ }
+    try { await db.exec(`ALTER TABLE ${tabla} RENAME COLUMN ${c.nombre} TO ${nuevo}`) } catch (e) { /* sqlite antiguo */ }
     const vis = esquema[tabla].visibles.indexOf(c.nombre)
     if (vis >= 0) esquema[tabla].visibles[vis] = nuevo
     c.nombre = nuevo
   }
   saveEsquema()
-  persistirAhora()
-  res.json({ ok: true, persistido: true })
+  const discoColUp = await persistirAhora()
+  await responderPersistido(res, {}, discoColUp)
 })
 
-app.delete('/api/esquema/:tabla/columnas/:nombre', requireAuth, requireRol('administrador'), (req, res) => {
+app.delete('/api/esquema/:tabla/columnas/:nombre', requireAuth, requireRol('administrador'), async (req, res) => {
   const tabla = req.params.tabla
   const esquema = getEsquema()
-  if (!esquema[tabla]) return res.status(404).json({ error: 'Módulo no encontrado.' })
+  if (!esquema[tabla]) return res.status(404).json({ error: 'MÃ³dulo no encontrado.' })
   esquema[tabla].columnas = esquema[tabla].columnas.filter((c) => c.nombre !== req.params.nombre)
   esquema[tabla].visibles = esquema[tabla].visibles.filter((n) => n !== req.params.nombre)
   saveEsquema()
-  persistirAhora()
-  res.json({ ok: true, persistido: true })
+  const discoColDel = await persistirAhora()
+  await responderPersistido(res, {}, discoColDel)
 })
 
-app.post('/api/esquema/:tabla/columnas/:nombre/opciones', requireAuth, requireRol('administrador', 'usuario'), (req, res) => {
+app.post('/api/esquema/:tabla/columnas/:nombre/opciones', requireAuth, requireRol('administrador', 'usuario'), async (req, res) => {
   const tabla = req.params.tabla
   const esquema = getEsquema()
-  if (!esquema[tabla]) return res.status(404).json({ error: 'Módulo no encontrado.' })
+  if (!esquema[tabla]) return res.status(404).json({ error: 'MÃ³dulo no encontrado.' })
   const c = esquema[tabla].columnas.find((x) => x.nombre === req.params.nombre)
   if (!c) return res.status(404).json({ error: 'Columna no encontrada.' })
   const valor = String((req.body && req.body.valor) || '').trim()
-  if (!valor) return res.status(400).json({ error: 'Valor vacío.' })
+  if (!valor) return res.status(400).json({ error: 'Valor vacÃ­o.' })
   if (!c.opciones) c.opciones = []
   if (!c.opciones.includes(valor)) c.opciones.push(valor)
   saveEsquema()
-  persistirAhora()
-  res.json({ ok: true, persistido: true })
+  const discoOp = await persistirAhora()
+  await responderPersistido(res, {}, discoOp)
 })
 
-app.get('*', (req, res, next) => {
+app.get('*', async (req, res, next) => {
   if (req.path.startsWith('/api/')) return next()
   res.sendFile(path.join(__dirname, 'public', 'index.html'))
 })
@@ -1727,9 +1778,10 @@ app.use((err, _req, res, next) => {
 })
 
 if (require.main === module) {
-  const server = app.listen(PORT, '0.0.0.0', () => {
-    console.log('Gestor de Información escuchando en puerto ' + PORT)
-    console.log('Base de datos:', DB_PATH)
+  const server = app.listen(PORT, '0.0.0.0', async () => {
+    try { await listo } catch (e) { console.error(e); process.exit(1) }
+    console.log('Gestor de InformaciÃ³n escuchando en puerto ' + PORT)
+    console.log('Base de datos:', esModoNube() ? 'turso' : DB_PATH)
     programador.iniciar(process.env.PUBLIC_URL || '')
   })
   server.on('error', (err) => {
@@ -1737,16 +1789,23 @@ if (require.main === module) {
     process.exit(1)
   })
   function apagar() {
-    try { programador.detener() } catch (_e) { /* ignore */ }
-    try { persistir(db) } catch (_e) { /* ignore */ }
-    server.close(() => {
-      try { closeDb() } catch (_e) { /* ignore */ }
-      process.exit(0)
+    Promise.resolve().then(async () => {
+      try { programador.detener() } catch (e) { console.error('[cierre] programador:', e.message) }
+      try {
+        const r = await persistir(db)
+        if (!r || r.ok === false) console.error('[cierre] persistir fallo:', r && r.error)
+      } catch (e) {
+        console.error('[cierre] persistir error:', e.message)
+      }
+      let saliendo = false
+      const salir = async () => {
+        if (saliendo) return
+        saliendo = true
+        try { await closeDb() } catch (e) { console.error('[cierre] closeDb:', e.message) }
+        process.exit(0)
+      }
+      server.close(() => { salir() })
     })
-    setTimeout(() => {
-      try { closeDb() } catch (_e) { /* ignore */ }
-      process.exit(0)
-    }, 4000).unref()
   }
   process.on('SIGTERM', apagar)
   process.on('SIGINT', apagar)
