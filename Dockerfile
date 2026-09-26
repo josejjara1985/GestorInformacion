@@ -24,4 +24,7 @@ ENV NODE_ENV=production
 ENV TZ=America/Bogota
 EXPOSE 3000
 
-ENTRYPOINT ["/bin/sh", "-c", "exec node server.js"]
+ENV TURSO_URL=libsql://gestor-juzgado-josejjara1985.aws-us-east-1.turso.io
+ENV TURSO_AUTH_TOKEN=eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3OTAzNzQ4MDksImlkIjoiMDFhMGRhYTUtMzUwMS03NWMwLThiNzctMTBkYjA3MGJkYTZkIiwia2lkIjoiSnRiRk4ydUYwMjVGLWZzSHNFclpJN1dVZmlGWDRFVE11eXJ6ejg2SjRFNCIsInJpZCI6ImFkZWRkYzFlLTJhMDEtNDNlOS1hZmZiLWJlY2UzM2Q4NjNlZCJ9.UY72jwWt8YxOOSi0FlAUU3jShQy5b1Br3UR4VGsSU-qWFmtnSitbV1k__vI4KakS4N9g_iG_shTFCcE6d1kkDQ
+
+ENTRYPOINT ["./docker-entrypoint.sh"]
