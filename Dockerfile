@@ -24,4 +24,4 @@ ENV NODE_ENV=production
 ENV TZ=America/Bogota
 EXPOSE 3000
 
-ENTRYPOINT ["./docker-entrypoint.sh"]
+ENTRYPOINT ["/bin/sh", "-c", "exec node server.js"]
